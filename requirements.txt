@@ -1,0 +1,35 @@
+# Scraping
+selenium==4.18.1
+webdriver-manager==4.0.1
+
+# Data
+nba_api==1.4.1
+pandas==2.2.1
+numpy==1.26.4
+thefuzz==0.22.1
+python-Levenshtein==0.25.0
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.29
+
+# ML
+scikit-learn==1.4.1post1
+xgboost==2.0.3
+shap==0.45.0
+torch==2.2.1
+
+# API
+fastapi==0.110.0
+uvicorn==0.29.0
+pydantic==2.6.4
+
+# Notebooks & viz
+jupyter==1.0.0
+matplotlib==3.8.3
+seaborn==0.13.2
+plotly==5.20.0
+
+# Utilities
+python-dotenv==1.0.1
+tqdm==4.66.2
