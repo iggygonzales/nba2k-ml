@@ -3,7 +3,7 @@ selenium==4.18.1
 webdriver-manager==4.0.1
 
 # Data
-nba_api==1.4.1
+nba_api
 pandas==2.2.1
 numpy==1.26.4
 thefuzz==0.22.1
