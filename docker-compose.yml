@@ -31,5 +31,23 @@ services:
     depends_on:
       - postgres
 
+  api:
+    build: .
+    container_name: nba2k_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: nba2k_user
+      POSTGRES_PASSWORD: nba2k_pass
+      POSTGRES_DB: nba2k_db
+      DATABASE_URL: postgresql://nba2k_user:nba2k_pass@postgres:5432/nba2k_db
+    depends_on:
+      - postgres
+    volumes:
+      - ./api:/app/api
+
 volumes:
   postgres_data:
