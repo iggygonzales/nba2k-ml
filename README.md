@@ -9,9 +9,9 @@ The project also predicts **NBA 2K27 ratings** using current 2025-26 season stat
 ## Project Goals
 
 - Build a complete data pipeline from raw web scraping to a production-ready database
-- Train regression and classification models to understand what drives 2K ratings
-- Deploy a FastAPI prediction endpoint wrapped in Docker
-- Add a natural language query layer using LLMs so anyone can ask questions about the data in plain English
+- Train regression models to understand what drives 2K ratings
+- Deploy a FastAPI prediction endpoint
+- Add a natural language query layer using LLMs
 
 This project was built as a portfolio piece targeting data science, ML engineering, data engineering, and AI engineering roles.
 
@@ -22,12 +22,12 @@ This project was built as a portfolio piece targeting data science, ML engineeri
 | Layer | Tools |
 |---|---|
 | Scraping | Selenium, webdriver-manager |
-| NBA Stats | nba_api, requests |
+| NBA Stats | nba_api |
 | Data Processing | pandas, thefuzz |
 | Database | PostgreSQL 16 (Docker), SQLAlchemy, psycopg2 |
 | ML | scikit-learn, XGBoost, PyTorch, SHAP |
-| API Serving | FastAPI, Docker |
-| AI Layer | Claude / OpenAI API (natural language queries) |
+| API Serving | FastAPI, uvicorn |
+| AI Layer | Claude / OpenAI API (coming soon) |
 | Environment | Python 3.11, Jupyter, VS Code |
 
 ---
@@ -54,14 +54,17 @@ nba2k-ml/
 │   └── db.py                 # SQLAlchemy connection helper
 │
 ├── notebooks/
-│   ├── 01_exploration.ipynb  # EDA
+│   ├── 01_exploration.ipynb  # EDA — distributions, correlations, top players
 │   ├── 02_features.ipynb     # Feature engineering
-│   ├── 03_xgboost.ipynb      # XGBoost model
-│   ├── 04_pytorch.ipynb      # PyTorch MLP
-│   └── 05_llm_queries.ipynb  # LLM natural language layer
+│   ├── 03_xgboost.ipynb      # XGBoost model + SHAP explainability
+│   ├── 04_pytorch.ipynb      # PyTorch MLP neural network
+│   └── 05_llm_queries.ipynb  # LLM natural language layer (coming soon)
 │
 ├── api/
-│   └── main.py               # FastAPI prediction endpoint
+│   ├── main.py               # FastAPI prediction endpoint
+│   ├── xgboost_model.pkl     # Trained XGBoost model
+│   ├── features.pkl          # Feature list
+│   └── scaler.pkl            # StandardScaler for PyTorch
 │
 ├── db/
 │   └── init.sql              # PostgreSQL schema
@@ -135,10 +138,69 @@ python scraper/fetch_nba_stats.py     # ~5 mins
 python pipeline/build_database.py
 ```
 
-### 7. Verify
+### 7. Run the API
 ```bash
-python pipeline/verify_db.py
+uvicorn api.main:app --reload
 ```
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/` | Health check |
+| GET | `/search/{query}` | Search players by name (accent-insensitive) |
+| GET | `/player/{name}` | Predict rating for a player (current season) |
+| GET | `/predict/2k27/{name}` | Predict 2K27 rating from 2025-26 stats |
+| POST | `/predict` | Predict rating from raw stats JSON |
+
+Interactive docs available at `http://localhost:8000/docs`
+
+### Example responses
+
+**GET /player/Nikola Jokic**
+```json
+{
+  "player": "Nikola Jokić",
+  "season": "2024-25",
+  "predicted_ovr": 96.7,
+  "rounded_ovr": 97,
+  "actual_ovr": 98,
+  "error": 1.3,
+  "model": "XGBoost"
+}
+```
+
+**GET /predict/2k27/Luka Doncic**
+```json
+{
+  "player": "Luka Dončić",
+  "season": "2025-26",
+  "predicted_2k27_ovr": 95.4,
+  "rounded_ovr": 95,
+  "last_known_ovr": 95,
+  "note": "Prediction based on 2025-26 NBA stats. 2K27 not yet released."
+}
+```
+
+---
+
+## Model Results
+
+| Model | MAE | R² | Notes |
+|---|---|---|---|
+| XGBoost | 1.16 | 0.942 | Primary model, best performance |
+| PyTorch MLP | 1.51 | 0.909 | Neural net, 4 layers, 500 epochs |
+
+**Top predictors (SHAP analysis):**
+1. `pts` — scoring is by far the strongest driver (0.91 correlation)
+2. `ovr_prev` — last season's rating, 2K is conservative year-over-year
+3. `pie` — player impact estimate
+4. `usg_pct` — usage rate
+5. `ast` — assists
+
+**Key insight:** XGBoost outperforms the neural network on this dataset, which is expected with ~2,700 training rows. Gradient boosting handles tabular data better than deep learning at this scale.
 
 ---
 
@@ -159,10 +221,12 @@ Stats per row: PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, NET_RTG, USG%, AST%,
 
 - **Team-by-team scraping** — HoopsHype paginates by team, bypassing JS pagination issues
 - **Fuzzy name matching** — handles special characters (Luka Dončić, Nikola Jokić) and known aliases
+- **unaccent PostgreSQL extension** — accent-insensitive API queries work for all player names
 - **Composite primary keys** — `(player_id, season_year)` in ratings and stats tables
 - **Season-based train/test split** — train on past seasons, test on recent ones (no data leakage)
 - **2025-26 predict rows** — stats with no rating, used to predict 2K27 before release
 - **Bulk inserts** — SQLAlchemy `to_sql` instead of row-by-row inserts for performance
+- **XGBoost vs PyTorch** — both models built and compared; XGBoost wins on accuracy, PyTorch demonstrates ML engineering depth
 
 ---
 
@@ -171,13 +235,15 @@ Stats per row: PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, NET_RTG, USG%, AST%,
 - [x] Data pipeline (scraping + NBA API)
 - [x] PostgreSQL database with proper schema
 - [x] Fuzzy name matching and join
-- [ ] EDA notebook
-- [ ] Feature engineering (career year, YoY deltas, age curves)
-- [ ] XGBoost regression model + SHAP explainability
-- [ ] PyTorch MLP model
-- [ ] FastAPI serving endpoint
-- [ ] Docker containerization
+- [x] EDA notebook
+- [x] Feature engineering (career year, YoY deltas)
+- [x] XGBoost regression model + SHAP explainability
+- [x] PyTorch MLP model
+- [x] FastAPI serving endpoint
+- [x] Accent-insensitive player search
+- [ ] Docker containerization of API
 - [ ] LLM natural language query layer
-- [ ] 2K27 rating predictions
+- [ ] 2K27 rating predictions dashboard
 
 ---
+
