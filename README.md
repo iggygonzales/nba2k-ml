@@ -1,6 +1,6 @@
 # NBA 2K ML — Predicting Player Ratings with Machine Learning
 
-A full end-to-end data science and machine learning project that scrapes NBA 2K player ratings (2K20–2K26), joins them with real NBA stats from the official NBA API, stores everything in a PostgreSQL database, and trains ML models to predict 2K ratings and future player trajectories.
+A full end-to-end data science and machine learning project that scrapes NBA 2K player ratings (2K20–2K26), joins them with real NBA stats from the official NBA API, stores everything in a PostgreSQL database, trains ML models to predict 2K ratings, and serves predictions via a FastAPI + Streamlit dashboard.
 
 The project also predicts **NBA 2K27 ratings** using current 2025-26 season stats — before the game is released.
 
@@ -9,9 +9,10 @@ The project also predicts **NBA 2K27 ratings** using current 2025-26 season stat
 ## Project Goals
 
 - Build a complete data pipeline from raw web scraping to a production-ready database
-- Train regression models to understand what drives 2K ratings
-- Deploy a FastAPI prediction endpoint in Docker
-- Add a natural language query layer using LLMs (text-to-SQL)
+- Train and compare regression models (XGBoost vs PyTorch) to understand what drives 2K ratings
+- Deploy a FastAPI prediction endpoint containerized with Docker
+- Build a Streamlit dashboard for interactive exploration
+- Add a natural language query layer using the Claude API (text-to-SQL)
 
 This project was built as a portfolio piece targeting data science, ML engineering, data engineering, and AI engineering roles.
 
@@ -29,6 +30,7 @@ This project was built as a portfolio piece targeting data science, ML engineeri
 | API Serving | FastAPI, uvicorn |
 | Containerization | Docker, Docker Compose |
 | AI Layer | Anthropic Claude API (text-to-SQL) |
+| Dashboard | Streamlit, Plotly |
 | Environment | Python 3.11, Jupyter, VS Code |
 
 ---
@@ -63,6 +65,7 @@ nba2k-ml/
 │
 ├── api/
 │   ├── main.py               # FastAPI prediction endpoint
+│   ├── streamlit_app.py      # Streamlit dashboard
 │   ├── xgboost_model.pkl     # Trained XGBoost model
 │   ├── features.pkl          # Feature list
 │   └── scaler.pkl            # StandardScaler for PyTorch
@@ -121,14 +124,14 @@ pip install -r requirements.txt
 ### 3. Configure environment
 ```bash
 cp .env.example .env
-# Edit .env with your credentials
+# Add your Postgres credentials and ANTHROPIC_API_KEY
 ```
 
 ### 4. Start the full stack
 ```bash
 docker-compose up -d
 ```
-This starts Postgres, pgAdmin, and the API all at once.
+Starts Postgres, pgAdmin, and the FastAPI server.
 
 ### 5. Scrape and build the database
 ```bash
@@ -137,10 +140,20 @@ python scraper/fetch_nba_stats.py     # ~5 mins
 python pipeline/build_database.py
 ```
 
-### 6. Verify
+### 6. Run the dashboard
 ```bash
-python pipeline/verify_db.py
+streamlit run api/streamlit_app.py
 ```
+
+Open `http://localhost:8501`
+
+---
+
+## Dashboard Features
+
+- **Player Lookup** — search any NBA player, see their current 2K26 rating, predicted 2K27 rating, career trajectory chart, and overrated/underrated indicator
+- **Leaderboard** — top 10 rated players in 2K26, predicted 2K27 top 10, biggest rating movers
+- **Ask Anything** — natural language queries powered by Claude (text-to-SQL), with quick question buttons
 
 ---
 
@@ -153,6 +166,7 @@ Base URL: `http://localhost:8000`
 | GET | `/` | Health check |
 | GET | `/search/{query}` | Search players by name (accent-insensitive) |
 | GET | `/player/{name}` | Predict rating for a player (current season) |
+| GET | `/player/{name}/history` | Full career rating + stats history |
 | GET | `/predict/2k27/{name}` | Predict 2K27 rating from 2025-26 stats |
 | GET | `/ask?q={question}` | Natural language query (text-to-SQL) |
 | POST | `/predict` | Predict rating from raw stats JSON |
@@ -216,6 +230,7 @@ Interactive docs: `http://localhost:8000/docs`
 - XGBoost outperforms PyTorch on this dataset — expected with ~2,700 training rows
 - 2K ratings are extremely stable year-over-year (avg 76.3–76.9 across all seasons)
 - The model underestimates stars (reputation premium) and overestimates low-minute players
+- `net_rating` has surprisingly low correlation (0.25) — 2K ignores team context
 
 ---
 
@@ -247,6 +262,8 @@ Based on 2025-26 season stats as of March 2026:
 | Predict | ~558 | 2025-26 | 2K27 predictions |
 | **Total** | **~4,442** | **8 seasons** | |
 
+Stats per row: PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, NET_RTG, USG%, AST%, AST/TO, PIE, AGE, GP, MIN
+
 ---
 
 ## Key Design Decisions
@@ -260,6 +277,7 @@ Based on 2025-26 season stats as of March 2026:
 - **Text-to-SQL LLM layer** — Claude converts natural language to PostgreSQL
 - **Bulk inserts** — SQLAlchemy `to_sql` for pipeline performance
 - **XGBoost vs PyTorch** — both built and compared, XGBoost wins on accuracy
+- **Streamlit caching** — leaderboard data cached 1hr, player data cached 5min
 
 ---
 
@@ -277,6 +295,5 @@ Based on 2025-26 season stats as of March 2026:
 - [x] Accent-insensitive player search
 - [x] LLM natural language query layer
 - [x] 2K27 rating predictions
-- [ ] Frontend dashboard
-
----
+- [x] Streamlit dashboard (player lookup, leaderboard, ask anything)
+- [ ] Cloud deployment 

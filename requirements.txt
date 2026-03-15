@@ -1,39 +1,44 @@
+# Core
+python-dotenv==1.0.0
+pandas==2.2.0
+numpy==2.0.0
+
 # Scraping
 selenium==4.18.1
 webdriver-manager==4.0.1
 
-# Data
-nba_api
-pandas==2.2.1
-numpy==1.26.4
+# NBA API
+nba_api==1.4.1
+
+# Fuzzy matching
 thefuzz==0.22.1
 python-Levenshtein==0.25.0
 
 # Database
 psycopg2-binary==2.9.9
-sqlalchemy==2.0.29
+sqlalchemy==2.0.27
 
 # ML
-scikit-learn==1.4.1post1
+scikit-learn==1.4.1.post1
 xgboost==2.0.3
-shap==0.45.0
-torch==2.2.1
+shap==0.44.1
+torch==2.2.0
 
 # API
-fastapi==0.110.0
-uvicorn==0.29.0
-pydantic==2.6.4
+fastapi==0.109.2
+uvicorn==0.27.1
+pydantic==2.6.1
+aiofiles==23.2.1
 
-# Notebooks & viz
+# AI
+anthropic==0.49.0
+
+# Dashboard
+streamlit==1.32.0
+plotly==5.19.0
+
+# Notebooks
 jupyter==1.0.0
+ipykernel==6.29.2
 matplotlib==3.8.3
 seaborn==0.13.2
-plotly==5.20.0
-
-# Utilities
-python-dotenv==1.0.1
-tqdm==4.66.2
-anthropic==0.49.0
-aiofiles==23.2.1
-streamlit
-plotly
