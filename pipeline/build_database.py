@@ -6,6 +6,7 @@ Build Database Pipeline
 3. Fuzzy matches player names
 4. Joins on PLAYER_NAME + SEASON
 5. Bulk inserts everything into Postgres using SQLAlchemy
+6. Builds features table (career year, deltas)
 
 Run from project root:
     python pipeline/build_database.py
@@ -133,9 +134,7 @@ def join_datasets(ratings, stats, name_map):
 
 # ── Bulk write to Postgres ────────────────────────────────────────────────────
 
-def write_to_postgres_bulk(merged, stats):
-    engine = get_engine()
-
+def write_to_postgres_bulk(merged, stats, engine):
     print("\nClearing existing data...")
     with engine.connect() as conn:
         conn.execute(text("TRUNCATE ratings, stats, features, players RESTART IDENTITY CASCADE"))
@@ -153,7 +152,8 @@ def write_to_postgres_bulk(merged, stats):
         "PLAYER_ID":   "player_id",
         "PLAYER_NAME": "full_name",
     }, inplace=True)
-    players_df.to_sql("players", engine, if_exists="append", index=False, method="multi")
+    players_df.to_sql("players", engine, if_exists="append", index=False,
+                      method="multi", chunksize=500)
     print(f"  Players inserted: {len(players_df)}")
 
     # ── Ratings ───────────────────────────────────────────────────────────────
@@ -173,32 +173,33 @@ def write_to_postgres_bulk(merged, stats):
     ]].copy()
     ratings_df.rename(columns={"GAME_VERSION": "game_version"}, inplace=True)
     ratings_df = ratings_df.drop_duplicates(["player_id", "season_year"])
-    ratings_df.to_sql("ratings", engine, if_exists="append", index=False, method="multi")
+    ratings_df.to_sql("ratings", engine, if_exists="append", index=False,
+                      method="multi", chunksize=500)
     print(f"  Ratings inserted: {len(ratings_df)}")
 
     # ── Stats (all seasons including 2025-26) ─────────────────────────────────
     all_stats = stats[stats["PLAYER_ID"].isin(valid_ids)].copy()
     all_stats.rename(columns={
-        "PLAYER_ID":        "player_id",
-        "season_year":      "season_year",
-        "TEAM_ABBREVIATION":"team_abbr",
-        "AGE":              "age",
-        "GP":               "gp",
-        "MIN":              "min",
-        "PTS":              "pts",
-        "REB":              "reb",
-        "AST":              "ast",
-        "STL":              "stl",
-        "BLK":              "blk",
-        "TOV":              "tov",
-        "FG_PCT":           "fg_pct",
-        "FG3_PCT":          "fg3_pct",
-        "FT_PCT":           "ft_pct",
-        "NET_RATING":       "net_rating",
-        "USG_PCT":          "usg_pct",
-        "AST_PCT":          "ast_pct",
-        "AST_TO":           "ast_to",
-        "PIE":              "pie",
+        "PLAYER_ID":         "player_id",
+        "season_year":       "season_year",
+        "TEAM_ABBREVIATION": "team_abbr",
+        "AGE":               "age",
+        "GP":                "gp",
+        "MIN":               "min",
+        "PTS":               "pts",
+        "REB":               "reb",
+        "AST":               "ast",
+        "STL":               "stl",
+        "BLK":               "blk",
+        "TOV":               "tov",
+        "FG_PCT":            "fg_pct",
+        "FG3_PCT":           "fg3_pct",
+        "FT_PCT":            "ft_pct",
+        "NET_RATING":        "net_rating",
+        "USG_PCT":           "usg_pct",
+        "AST_PCT":           "ast_pct",
+        "AST_TO":            "ast_to",
+        "PIE":               "pie",
     }, inplace=True)
 
     stats_cols = [
@@ -208,8 +209,43 @@ def write_to_postgres_bulk(merged, stats):
         "net_rating", "usg_pct", "ast_pct", "ast_to", "pie",
     ]
     all_stats = all_stats[stats_cols].drop_duplicates(["player_id", "season_year"])
-    all_stats.to_sql("stats", engine, if_exists="append", index=False, method="multi")
+    all_stats.to_sql("stats", engine, if_exists="append", index=False,
+                     method="multi", chunksize=500)
     print(f"  Stats inserted:   {len(all_stats)}")
+
+
+# ── Build features ────────────────────────────────────────────────────────────
+
+def build_features(engine):
+    print("\nBuilding features table...")
+
+    df = pd.read_sql("""
+        SELECT player_id, season_year, ovr_rating, pts, reb, ast
+        FROM ml_dataset
+        ORDER BY player_id, season_year
+    """, engine)
+
+    df = df.sort_values(["player_id", "season_year"])
+    df["career_year"] = df.groupby("player_id").cumcount() + 1
+    df["pts_delta"]   = df.groupby("player_id")["pts"].diff().round(2)
+    df["reb_delta"]   = df.groupby("player_id")["reb"].diff().round(2)
+    df["ast_delta"]   = df.groupby("player_id")["ast"].diff().round(2)
+    df["ovr_prev"]    = df.groupby("player_id")["ovr_rating"].shift(1)
+    df["ovr_delta"]   = df.groupby("player_id")["ovr_rating"].diff()
+
+    features_df = df[[
+        "player_id", "season_year", "career_year",
+        "pts_delta", "reb_delta", "ast_delta",
+        "ovr_prev", "ovr_delta"
+    ]].copy()
+
+    with engine.connect() as conn:
+        conn.execute(text("TRUNCATE features"))
+        conn.commit()
+
+    features_df.to_sql("features", engine, if_exists="append",
+                       index=False, method="multi", chunksize=500)
+    print(f"  Features inserted: {len(features_df)} rows")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -232,12 +268,14 @@ def main():
     merged.to_csv(PROCESSED_PATH, index=False)
     print(f"\nSaved joined dataset to {PROCESSED_PATH}")
 
-    write_to_postgres_bulk(merged, stats)
+    engine = get_engine()
+    write_to_postgres_bulk(merged, stats, engine)
+    build_features(engine)
 
     print("\nDone! Verifying row counts...")
     conn = get_db()
     cur  = conn.cursor()
-    for table in ["players", "ratings", "stats"]:
+    for table in ["players", "ratings", "stats", "features"]:
         cur.execute(f"SELECT COUNT(*) FROM {table}")
         print(f"  {table}: {cur.fetchone()[0]} rows")
     cur.execute("SELECT split, COUNT(*) FROM ml_dataset GROUP BY split ORDER BY split")
