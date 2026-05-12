@@ -1,0 +1,25 @@
+# Core
+python-dotenv==1.0.0
+pandas==2.2.0
+numpy==1.26.4
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.27
+
+# ML
+scikit-learn==1.4.1.post1
+xgboost==2.0.3
+
+# API
+fastapi==0.115.0
+uvicorn==0.27.1
+pydantic==2.6.1
+aiofiles==23.2.1
+starlette==0.37.2
+
+# AI
+anthropic==0.49.0
+
+# Requests
+requests==2.31.0
