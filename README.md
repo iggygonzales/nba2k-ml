@@ -1,8 +1,17 @@
 # NBA 2K ML — Predicting Player Ratings with Machine Learning
 
+![CI/CD](https://github.com/iggygonzales/nba2k-ml/actions/workflows/ci-cd.yml/badge.svg)
+
 A full end-to-end data science and machine learning project that scrapes NBA 2K player ratings (2K20–2K26), joins them with real NBA stats from the official NBA API, stores everything in a PostgreSQL database, trains ML models to predict 2K ratings, and serves predictions via a FastAPI + Streamlit dashboard.
 
-The project also predicts **NBA 2K27 ratings** using current 2025-26 season stats — before the game is released.
+The project predicts **NBA 2K27 ratings** using current 2025-26 season stats — before the game is released.
+
+---
+
+## Live Demo
+
+🌐 **Dashboard:** https://nba2k-ml.streamlit.app
+🔌 **API:** http://18.222.150.138:8000/docs
 
 ---
 
@@ -13,6 +22,7 @@ The project also predicts **NBA 2K27 ratings** using current 2025-26 season stat
 - Deploy a FastAPI prediction endpoint containerized with Docker
 - Build a Streamlit dashboard for interactive exploration
 - Add a natural language query layer using the Claude API (text-to-SQL)
+- Deploy the full stack to AWS EC2 with an automated CI/CD pipeline
 
 This project was built as a portfolio piece targeting data science, ML engineering, data engineering, and AI engineering roles.
 
@@ -31,6 +41,8 @@ This project was built as a portfolio piece targeting data science, ML engineeri
 | Containerization | Docker, Docker Compose |
 | AI Layer | Anthropic Claude API (text-to-SQL) |
 | Dashboard | Streamlit, Plotly |
+| Cloud | AWS EC2 |
+| CI/CD | GitHub Actions |
 | Environment | Python 3.11, Jupyter, VS Code |
 
 ---
@@ -39,6 +51,10 @@ This project was built as a portfolio piece targeting data science, ML engineeri
 
 ```
 nba2k-ml/
+│
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yml         # GitHub Actions — test + deploy pipeline
 │
 ├── data/
 │   ├── raw/
@@ -67,15 +83,19 @@ nba2k-ml/
 │   ├── main.py               # FastAPI prediction endpoint
 │   ├── streamlit_app.py      # Streamlit dashboard
 │   ├── xgboost_model.pkl     # Trained XGBoost model
-│   ├── features.pkl          # Feature list
-│   └── scaler.pkl            # StandardScaler for PyTorch
+│   └── features.pkl          # Feature list
+│
+├── tests/
+│   ├── __init__.py
+│   └── test_api.py           # pytest test suite (9 tests)
 │
 ├── db/
 │   └── init.sql              # PostgreSQL schema
 │
 ├── Dockerfile                # API container
 ├── docker-compose.yml        # Postgres + pgAdmin + API
-├── requirements.txt
+├── requirements.txt          # Full local development dependencies
+├── requirements-api.txt      # Lightweight dependencies for Docker container
 ├── .env.example
 └── README.md
 ```
@@ -149,6 +169,28 @@ Open `http://localhost:8501`
 
 ---
 
+## CI/CD Pipeline
+
+Every push triggers the GitHub Actions pipeline:
+
+```
+git push
+    ↓
+test job — installs deps, connects to DB, runs 9 pytest tests
+    ↓
+tests pass? ✅
+    ↓
+deploy job (main branch only) — SSHes into EC2, git pull, docker compose up --build
+    ↓
+live API updated automatically
+```
+
+- Pushes to any branch run tests only
+- Pushes to `main` run tests first, then deploy if they pass
+- Broken code never reaches production
+
+---
+
 ## Dashboard Features
 
 - **Player Lookup** — search any NBA player, see their current 2K26 rating, predicted 2K27 rating, career trajectory chart, and overrated/underrated indicator
@@ -159,7 +201,7 @@ Open `http://localhost:8501`
 
 ## API Endpoints
 
-Base URL: `http://localhost:8000`
+Base URL: `http://18.222.150.138:8000`
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -171,7 +213,7 @@ Base URL: `http://localhost:8000`
 | GET | `/ask?q={question}` | Natural language query (text-to-SQL) |
 | POST | `/predict` | Predict rating from raw stats JSON |
 
-Interactive docs: `http://localhost:8000/docs`
+Interactive docs: `http://18.222.150.138:8000/docs`
 
 ### Example responses
 
@@ -278,6 +320,8 @@ Stats per row: PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, NET_RTG, USG%, AST%,
 - **Bulk inserts** — SQLAlchemy `to_sql` for pipeline performance
 - **XGBoost vs PyTorch** — both built and compared, XGBoost wins on accuracy
 - **Streamlit caching** — leaderboard data cached 1hr, player data cached 5min
+- **Separate API requirements** — `requirements-api.txt` excludes heavy packages (PyTorch, Jupyter) keeping Docker builds under 60 seconds
+- **CI/CD with GitHub Actions** — tests block deploys, broken code never reaches production
 
 ---
 
@@ -296,4 +340,7 @@ Stats per row: PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, NET_RTG, USG%, AST%,
 - [x] LLM natural language query layer
 - [x] 2K27 rating predictions
 - [x] Streamlit dashboard (player lookup, leaderboard, ask anything)
-- [ ] Cloud deployment 
+- [x] Cloud deployment (AWS EC2)
+- [x] CI/CD pipeline (GitHub Actions — test + deploy)
+- [ ] Position encoding as ML feature
+- [ ] Deploy frontend to custom domain
