@@ -33,6 +33,20 @@ jobs:
           echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> .env
           echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
 
+      - name: Test DB connection
+        run: |
+          python -c "
+          import os
+          from dotenv import load_dotenv
+          load_dotenv()
+          print('DB URL:', os.getenv('DATABASE_URL', 'NOT SET'))
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.getenv('DATABASE_URL'))
+          with engine.connect() as c:
+              result = c.execute(text('SELECT 1'))
+              print('DB connected!')
+          "
+
       - name: Run tests
         run: |
           pytest tests/ -v
