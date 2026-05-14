@@ -49,6 +49,7 @@ jobs:
 
       - name: Load schema
         run: |
+          PGPASSWORD=nba2k_pass psql -h localhost -U nba2k_user -d nba2k_db -c "CREATE EXTENSION IF NOT EXISTS unaccent;"
           PGPASSWORD=nba2k_pass psql -h localhost -U nba2k_user -d nba2k_db -f db/init.sql
 
       - name: Seed test data

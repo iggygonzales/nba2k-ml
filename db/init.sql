@@ -1,6 +1,7 @@
 -- =============================================================
 -- NBA 2K ML Project — Database Schema
 -- =============================================================
+CREATE EXTENSION IF NOT EXISTS unaccent;
 
 CREATE TABLE IF NOT EXISTS players (
     player_id       INTEGER PRIMARY KEY,
