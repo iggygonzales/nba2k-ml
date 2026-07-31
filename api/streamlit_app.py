@@ -62,16 +62,19 @@ def num_col(fmt="%.1f"):
 
 @st.cache_data(ttl=3600)
 def get_leaderboard():
-    top10 = requests.get(f"{API}/ask", params={
-        "q": "Top 10 highest rated players in nba-2k26 show player_name ovr_rating pts reb ast"
-    }).json()
-    improved = requests.get(f"{API}/ask", params={
-        "q": "Top 10 players with biggest rating increase in nba-2k26 show player_name ovr_rating ovr_prev ovr_delta"
-    }).json()
-    declined = requests.get(f"{API}/ask", params={
-        "q": "Top 10 players with biggest rating decrease in nba-2k26 show player_name ovr_rating ovr_prev ovr_delta"
-    }).json()
-    return top10, improved, declined
+    try:
+        top10 = requests.get(f"{API}/ask", params={
+            "q": "Top 10 highest rated players in nba-2k26 show player_name ovr_rating pts reb ast"
+        }, timeout=10)
+        improved = requests.get(f"{API}/ask", params={
+            "q": "Top 10 players with biggest rating increase in nba-2k26 show player_name ovr_rating ovr_prev ovr_delta"
+        }, timeout=10)
+        declined = requests.get(f"{API}/ask", params={
+            "q": "Top 10 players with biggest rating decrease in nba-2k26 show player_name ovr_rating ovr_prev ovr_delta"
+        }, timeout=10)
+        return top10.json(), improved.json(), declined.json()
+    except Exception:
+        return None, None, None
 
 
 @st.cache_data(ttl=3600)
@@ -347,6 +350,9 @@ with tab2:
     st.subheader("Top rated players")
 
     top10, improved, declined = get_leaderboard()
+    if top10 is None:
+        st.warning("⚠️ Leaderboard temporarily unavailable — API issue.")
+        st.stop()
     pred_rows = get_2k27_predictions()
 
     lcol1, lcol2 = st.columns(2)
