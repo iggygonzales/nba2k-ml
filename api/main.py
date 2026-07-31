@@ -374,7 +374,7 @@ def ask(q: str):
 
     # Step 1 — Generate SQL
     sql_response = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=1000,
         system=SCHEMA,
         messages=[{"role": "user", "content": q}]
@@ -397,7 +397,7 @@ def ask(q: str):
 
     # Step 4 — Generate natural language answer
     answer_response = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=1000,
         system="You are an NBA 2K analyst. Answer concisely and insightfully based on the data. When predicted_2k27 column is present, use those as the predicted ratings.",
         messages=[{
