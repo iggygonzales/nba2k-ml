@@ -350,6 +350,7 @@ with tab1:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab2:
+    st.cache_data.clear()  # temporary — remove after leaderboard works
     st.subheader("Top rated players")
 
     top10, improved, declined = get_leaderboard()
