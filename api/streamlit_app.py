@@ -79,23 +79,26 @@ def get_leaderboard():
 
 @st.cache_data(ttl=3600)
 def get_2k27_predictions():
-    res = requests.get(f"{API}/ask", params={
-        "q": "Top 10 predicted 2K27 ratings based on 2025-26 stats show player_name ovr_prev pts age"
-    }).json()
-    names = [r.get("player_name") for r in res.get("data", []) if r.get("player_name")]
-    pred_rows = []
-    for name in names:
-        p = requests.get(f"{API}/predict/2k27/{name}").json()
-        if "detail" not in p:
-            pred_rows.append({
-                "Player":         name,
-                "2K26":           p.get("last_known_ovr"),
-                "Predicted 2K27": p.get("rounded_ovr"),
-                "Δ":              round((p.get("rounded_ovr") or 0) - (p.get("last_known_ovr") or 0), 1),
-                "PTS":            round(float(p.get("current_stats", {}).get("pts") or 0), 1),
-                "AGE":            round(float(p.get("current_stats", {}).get("age") or 0), 1),
-            })
-    return pred_rows
+    try:
+        res = requests.get(f"{API}/ask", params={
+            "q": "Top 10 predicted 2K27 ratings based on 2025-26 stats show player_name ovr_prev pts age"
+        }, timeout=10).json()
+        names = [r.get("player_name") for r in res.get("data", []) if r.get("player_name")]
+        pred_rows = []
+        for name in names:
+            p = requests.get(f"{API}/predict/2k27/{name}").json()
+            if "detail" not in p:
+                pred_rows.append({
+                    "Player":         name,
+                    "2K26":           p.get("last_known_ovr"),
+                    "Predicted 2K27": p.get("rounded_ovr"),
+                    "Δ":              round((p.get("rounded_ovr") or 0) - (p.get("last_known_ovr") or 0), 1),
+                    "PTS":            round(float(p.get("current_stats", {}).get("pts") or 0), 1),
+                    "AGE":            round(float(p.get("current_stats", {}).get("age") or 0), 1),
+                })
+        return pred_rows
+    except Exception:
+        return None
 
 
 @st.cache_data(ttl=300)
@@ -350,72 +353,71 @@ with tab2:
     st.subheader("Top rated players")
 
     top10, improved, declined = get_leaderboard()
-    if top10 is None:
-        st.warning("⚠️ Leaderboard temporarily unavailable — API issue.")
-        st.stop()
     pred_rows = get_2k27_predictions()
 
-    lcol1, lcol2 = st.columns(2)
+    if top10 is None:
+        st.warning("⚠️ Leaderboard temporarily unavailable — API issue.")
+    else:
+        lcol1, lcol2 = st.columns(2)
 
-    with lcol1:
-        st.markdown("#### 2K26 Top 10")
-        if top10.get("data"):
-            df_top = pd.DataFrame(top10["data"])
-            df_top.index = range(1, len(df_top) + 1)
-            st.dataframe(
-                df_top,
-                column_config={
-                    "ovr_rating": num_col(), "pts": num_col(),
-                    "reb": num_col(), "ast": num_col(),
-                },
-                use_container_width=True
-            )
+        with lcol1:
+            st.markdown("#### 2K26 Top 10")
+            if top10.get("data"):
+                df_top = pd.DataFrame(top10["data"])
+                df_top.index = range(1, len(df_top) + 1)
+                st.dataframe(
+                    df_top,
+                    column_config={
+                        "ovr_rating": num_col(), "pts": num_col(),
+                        "reb": num_col(), "ast": num_col(),
+                    },
+                    use_container_width=True
+                )
 
-    with lcol2:
-        st.markdown("#### Predicted 2K27 Top 10")
-        if pred_rows:
-            df_p = pd.DataFrame(pred_rows)
-            st.dataframe(
-                df_p.style.map(color_delta_style, subset=["Δ"]),
-                column_config={
-                    "2K26": num_col(), "Predicted 2K27": num_col(),
-                    "Δ": num_col(), "PTS": num_col(), "AGE": num_col(),
-                },
-                hide_index=True,
-                use_container_width=True
-            )
+        with lcol2:
+            st.markdown("#### Predicted 2K27 Top 10")
+            if pred_rows:
+                df_p = pd.DataFrame(pred_rows)
+                st.dataframe(
+                    df_p.style.map(color_delta_style, subset=["Δ"]),
+                    column_config={
+                        "2K26": num_col(), "Predicted 2K27": num_col(),
+                        "Δ": num_col(), "PTS": num_col(), "AGE": num_col(),
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
 
-    st.divider()
-    st.subheader("Biggest movers in 2K26")
+        st.divider()
+        st.subheader("Biggest movers in 2K26")
 
-    mcol1, mcol2 = st.columns(2)
+        mcol1, mcol2 = st.columns(2)
 
-    with mcol1:
-        st.markdown("#### Most improved")
-        if improved.get("data"):
-            df_up = pd.DataFrame(improved["data"])
-            st.dataframe(
-                df_up,
-                column_config={
-                    "ovr_rating": num_col(), "ovr_prev": num_col(), "ovr_delta": num_col(),
-                },
-                hide_index=True,
-                use_container_width=True
-            )
+        with mcol1:
+            st.markdown("#### Most improved")
+            if improved and improved.get("data"):
+                df_up = pd.DataFrame(improved["data"])
+                st.dataframe(
+                    df_up,
+                    column_config={
+                        "ovr_rating": num_col(), "ovr_prev": num_col(), "ovr_delta": num_col(),
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
 
-    with mcol2:
-        st.markdown("#### Biggest declines")
-        if declined.get("data"):
-            df_dn = pd.DataFrame(declined["data"])
-            st.dataframe(
-                df_dn,
-                column_config={
-                    "ovr_rating": num_col(), "ovr_prev": num_col(), "ovr_delta": num_col(),
-                },
-                hide_index=True,
-                use_container_width=True
-            )
-
+        with mcol2:
+            st.markdown("#### Biggest declines")
+            if declined and declined.get("data"):
+                df_dn = pd.DataFrame(declined["data"])
+                st.dataframe(
+                    df_dn,
+                    column_config={
+                        "ovr_rating": num_col(), "ovr_prev": num_col(), "ovr_delta": num_col(),
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — Ask Anything
