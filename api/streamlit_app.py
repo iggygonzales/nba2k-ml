@@ -198,7 +198,7 @@ def get_2k27_movers():
     try:
         # Pull top 30 players by 2K26 rating — large enough pool for 10 risers + 10 decliners
         res = requests.get(f"{API}/ask", params={
-            "q": "Top 30 players by ovr_rating in nba-2k26 show player_name ovr_rating"
+            "q": "Top 100 players by ovr_rating in nba-2k26 show player_name ovr_rating"
         }, timeout=15).json()
 
         names = [r.get("player_name") for r in res.get("data", []) if r.get("player_name")]
