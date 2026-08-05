@@ -196,15 +196,23 @@ def get_2k27_predictions():
 @st.cache_data(ttl=3601)
 def get_2k27_movers():
     try:
-        # Pull top 100 players by 2K26 rating for a large enough pool
-        res = requests.get(f"{API}/ask", params={
-            "q": "Top 100 players by ovr_rating in nba-2k26 show player_name ovr_rating"
+        # Get top 10 from leaderboard (already cached)
+        top_res = requests.get(f"{API}/ask", params={
+            "q": "Top 10 highest rated players in nba-2k26 show player_name ovr_rating"
         }, timeout=15).json()
 
-        names = [r.get("player_name") for r in res.get("data", []) if r.get("player_name")]
+        # Also get next tier — players rated 85-92
+        mid_res = requests.get(f"{API}/ask", params={
+            "q": "Players with ovr_rating between 85 and 92 in nba-2k26 order by ovr_rating desc limit 20 show player_name ovr_rating"
+        }, timeout=15).json()
+
+        top_names = [r.get("player_name") for r in top_res.get("data", []) if r.get("player_name")]
+        mid_names = [r.get("player_name") for r in mid_res.get("data", []) if r.get("player_name")]
+
+        all_names = list(dict.fromkeys(top_names + mid_names))  # deduplicate, preserve order
 
         rows = []
-        for name in names:
+        for name in all_names:
             p = requests.get(f"{API}/predict/2k27/{name}", timeout=10).json()
             if "detail" not in p:
                 last = p.get("last_known_ovr") or 0
@@ -222,11 +230,7 @@ def get_2k27_movers():
             return None, None
 
         df = pd.DataFrame(rows)
-
-        # Top 10 risers — sorted by best delta (highest first)
         up_rows = df.sort_values("Δ", ascending=False).head(10).to_dict("records")
-
-        # Top 10 decliners — sorted by worst delta (lowest first)
         dn_rows = df.sort_values("Δ", ascending=True).head(10).to_dict("records")
 
         return up_rows if up_rows else None, dn_rows if dn_rows else None
