@@ -413,3 +413,66 @@ def ask(q: str):
         "data":     [{k: to_python(v) for k, v in row.items()}
                      for row in df.head(20).to_dict(orient="records")]
     }
+
+@app.get("/leaderboard/2k27-movers")
+def get_2k27_movers_endpoint():
+    """Returns predicted 2K27 risers and decliners directly from DB + model."""
+    engine = get_engine()
+    
+    # Get all players with 2025-26 stats directly from DB — no LLM needed
+    df = pd.read_sql("""
+        SELECT 
+            p.full_name as player_name,
+            r.ovr_rating as last_2k26,
+            st.pts, st.reb, st.ast, st.age, st.gp,
+            f.ovr_prev, f.pts_delta, f.reb_delta, f.ast_delta,
+            f.career_year
+        FROM stats st
+        JOIN players p ON p.player_id = st.player_id
+        JOIN seasons s ON s.season_year = st.season_year
+        LEFT JOIN ratings r ON r.player_id = st.player_id AND r.season_year = 2025
+        LEFT JOIN features f ON f.player_id = st.player_id AND f.season_year = 2026
+        WHERE st.season_year = 2026
+        AND r.ovr_rating IS NOT NULL
+        AND st.gp >= 20
+        ORDER BY r.ovr_rating DESC
+        LIMIT 100
+    """, engine)
+
+    if df.empty:
+        raise HTTPException(status_code=404, detail="No data found")
+
+    # Fill nulls
+    for col in ["pts_delta", "reb_delta", "ast_delta"]:
+        df[col] = df[col].fillna(0.0)
+    df["ovr_prev"] = df["ovr_prev"].fillna(75.0)
+
+    # Run model on all players at once
+    X = df[FEATURES].copy()
+    preds = model.predict(X)
+    preds = np.clip(preds, 67, 99).round(1)
+
+    df["predicted_2k27"] = preds
+    df["delta"] = (df["predicted_2k27"] - df["last_2k26"]).round(1)
+
+    # Top 10 risers and decliners
+    risers   = df.sort_values("delta", ascending=False).head(10)
+    decliners = df.sort_values("delta", ascending=True).head(10)
+
+    def to_rows(d):
+        return [
+            {
+                "Player":         str(row["player_name"]),
+                "2K26":           to_python(row["last_2k26"]),
+                "Predicted 2K27": int(round(row["predicted_2k27"])),
+                "Δ":              to_python(row["delta"]),
+                "PTS":            to_python(row["pts"]),
+                "AGE":            to_python(row["age"]),
+            }
+            for _, row in d.iterrows()
+        ]
+
+    return {
+        "risers":    to_rows(risers),
+        "decliners": to_rows(decliners),
+    }

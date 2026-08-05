@@ -196,45 +196,8 @@ def get_2k27_predictions():
 @st.cache_data(ttl=3601)
 def get_2k27_movers():
     try:
-        # Get top 10 from leaderboard (already cached)
-        top_res = requests.get(f"{API}/ask", params={
-            "q": "Top 10 highest rated players in nba-2k26 show player_name ovr_rating"
-        }, timeout=15).json()
-
-        # Also get next tier — players rated 85-92
-        mid_res = requests.get(f"{API}/ask", params={
-            "q": "Players with ovr_rating between 85 and 92 in nba-2k26 order by ovr_rating desc limit 20 show player_name ovr_rating"
-        }, timeout=15).json()
-
-        top_names = [r.get("player_name") for r in top_res.get("data", []) if r.get("player_name")]
-        mid_names = [r.get("player_name") for r in mid_res.get("data", []) if r.get("player_name")]
-
-        all_names = list(dict.fromkeys(top_names + mid_names))  # deduplicate, preserve order
-
-        rows = []
-        for name in all_names:
-            p = requests.get(f"{API}/predict/2k27/{name}", timeout=10).json()
-            if "detail" not in p:
-                last = p.get("last_known_ovr") or 0
-                pred = p.get("rounded_ovr") or 0
-                rows.append({
-                    "Player":         name,
-                    "2K26":           last,
-                    "Predicted 2K27": pred,
-                    "Δ":              round(pred - last, 1),
-                    "PTS":            round(float(p.get("current_stats", {}).get("pts") or 0), 1),
-                    "AGE":            round(float(p.get("current_stats", {}).get("age") or 0), 1),
-                })
-
-        if not rows:
-            return None, None
-
-        df = pd.DataFrame(rows)
-        up_rows = df.sort_values("Δ", ascending=False).head(10).to_dict("records")
-        dn_rows = df.sort_values("Δ", ascending=True).head(10).to_dict("records")
-
-        return up_rows if up_rows else None, dn_rows if dn_rows else None
-
+        res = requests.get(f"{API}/leaderboard/2k27-movers", timeout=15).json()
+        return res.get("risers"), res.get("decliners")
     except Exception:
         return None, None
 
