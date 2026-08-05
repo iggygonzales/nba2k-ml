@@ -193,6 +193,38 @@ def get_2k27_predictions():
     except Exception:
         return None
 
+@st.cache_data(ttl=3601)
+def get_2k27_movers():
+    try:
+        up_res = requests.get(f"{API}/ask", params={
+            "q": "Top 10 players with biggest rating increase in nba-2k26 show player_name ovr_rating"
+        }, timeout=15).json()
+        dn_res = requests.get(f"{API}/ask", params={
+            "q": "Top 10 players with biggest rating decrease in nba-2k26 show player_name ovr_rating"
+        }, timeout=15).json()
+
+        def build_rows(names):
+            rows = []
+            for name in names:
+                p = requests.get(f"{API}/predict/2k27/{name}", timeout=10).json()
+                if "detail" not in p:
+                    last = p.get("last_known_ovr") or 0
+                    pred = p.get("rounded_ovr") or 0
+                    rows.append({
+                        "Player":         name,
+                        "2K26":           last,
+                        "Predicted 2K27": pred,
+                        "Δ":              round(pred - last, 1),
+                        "PTS":            round(float(p.get("current_stats", {}).get("pts") or 0), 1),
+                        "AGE":            round(float(p.get("current_stats", {}).get("age") or 0), 1),
+                    })
+            return rows or None
+
+        up_names = [r.get("player_name") for r in up_res.get("data", []) if r.get("player_name")]
+        dn_names = [r.get("player_name") for r in dn_res.get("data", []) if r.get("player_name")]
+        return build_rows(up_names), build_rows(dn_names)
+    except Exception:
+        return None, None
 
 @st.cache_data(ttl=300)
 def get_player_history(name):
@@ -257,18 +289,22 @@ with tab1:
             if suggestions:
                 if len(suggestions) == 1:
                     selected = suggestions[0]
+                    st.session_state["selected_player"] = selected
                 else:
                     selected = st.selectbox(
                         "Select player",
                         suggestions,
                         label_visibility="collapsed"
                     )
+                    st.session_state["selected_player"] = selected
             else:
                 st.warning("No players found — try a different name")
         except Exception:
             st.warning("Search unavailable — API issue")
-
-    st.divider()
+    elif "selected_player" in st.session_state:
+        # Keep last selected player when only season changes
+        selected = st.session_state["selected_player"]
+        st.divider()
 
     if selected:
         try:
@@ -320,7 +356,7 @@ with tab1:
                         f'padding:0.6rem 1rem;border-radius:0 8px 8px 0;margin:0.5rem 0 1rem">'
                         f'<strong style="color:{vc}">{verdict}</strong>'
                         f'<span style="font-size:0.8rem;color:#aaa;margin-left:8px">'
-                        f'Model expects {predicted}</span></div>',
+                        f'The model predicted a{predicted}</span></div>',
                         unsafe_allow_html=True
                     )
 
@@ -494,6 +530,7 @@ with tab2:
 
     top10, improved, declined = get_leaderboard()
     pred_rows = get_2k27_predictions()
+    up_pred, dn_pred = get_2k27_movers()
 
     st.markdown("**Tier guide:**")
     st.markdown(tier_legend_html(), unsafe_allow_html=True)
@@ -501,6 +538,7 @@ with tab2:
     if top10 is None:
         st.warning("⚠️ Leaderboard temporarily unavailable — API issue.")
     else:
+        # ── Section 1: Current ratings vs predicted ───────────────────────────
         lcol1, lcol2 = st.columns(2)
 
         with lcol1:
@@ -540,6 +578,7 @@ with tab2:
             else:
                 st.info("Loading 2K27 predictions...")
 
+        # ── Section 2: Biggest movers in 2K26 ────────────────────────────────
         st.divider()
         st.subheader("Biggest movers in 2K26")
         mcol1, mcol2 = st.columns(2)
@@ -575,6 +614,53 @@ with tab2:
                     },
                     hide_index=True, use_container_width=True
                 )
+
+        # ── Section 3: Predicted 2K27 movers ─────────────────────────────────
+        st.divider()
+        st.subheader("Predicted 2K27 Movers")
+        st.caption("Who keeps rising and who keeps falling? Based on 2025-26 season stats.")
+
+        pcol1, pcol2 = st.columns(2)
+
+        with pcol1:
+            st.markdown("#### 🚀 Predicted risers for 2K27")
+            if up_pred:
+                df_up_pred = pd.DataFrame(up_pred)
+                for c in ["2K26", "Predicted 2K27", "Δ", "PTS", "AGE"]:
+                    if c in df_up_pred.columns:
+                        df_up_pred[c] = pd.to_numeric(df_up_pred[c], errors="coerce").round(1)
+                df_up_pred = df_up_pred.sort_values("Δ", ascending=False)
+                df_up_pred.index = range(1, len(df_up_pred) + 1)
+                st.dataframe(
+                    df_up_pred.style.map(color_delta_style, subset=["Δ"]),
+                    column_config={
+                        "2K26": num_col(), "Predicted 2K27": num_col(),
+                        "Δ": num_col(), "PTS": num_col(), "AGE": num_col(),
+                    },
+                    use_container_width=True
+                )
+            else:
+                st.info("Loading predictions...")
+
+        with pcol2:
+            st.markdown("#### 📉 Predicted decliners for 2K27")
+            if dn_pred:
+                df_dn_pred = pd.DataFrame(dn_pred)
+                for c in ["2K26", "Predicted 2K27", "Δ", "PTS", "AGE"]:
+                    if c in df_dn_pred.columns:
+                        df_dn_pred[c] = pd.to_numeric(df_dn_pred[c], errors="coerce").round(1)
+                df_dn_pred = df_dn_pred.sort_values("Δ", ascending=True)
+                df_dn_pred.index = range(1, len(df_dn_pred) + 1)
+                st.dataframe(
+                    df_dn_pred.style.map(color_delta_style, subset=["Δ"]),
+                    column_config={
+                        "2K26": num_col(), "Predicted 2K27": num_col(),
+                        "Δ": num_col(), "PTS": num_col(), "AGE": num_col(),
+                    },
+                    use_container_width=True
+                )
+            else:
+                st.info("Loading predictions...")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
