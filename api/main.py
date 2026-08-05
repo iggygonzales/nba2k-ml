@@ -425,6 +425,9 @@ def get_2k27_movers_endpoint():
             p.full_name as player_name,
             r.ovr_rating as last_2k26,
             st.pts, st.reb, st.ast, st.age, st.gp,
+            st.stl, st.blk, st.tov,
+            st.fg_pct, st.fg3_pct, st.ft_pct,
+            st.net_rating, st.usg_pct, st.ast_pct, st.pie,
             f.ovr_prev, f.pts_delta, f.reb_delta, f.ast_delta,
             f.career_year
         FROM stats st
@@ -446,6 +449,7 @@ def get_2k27_movers_endpoint():
     for col in ["pts_delta", "reb_delta", "ast_delta"]:
         df[col] = df[col].fillna(0.0)
     df["ovr_prev"] = df["ovr_prev"].fillna(75.0)
+    df[FEATURES] = df[FEATURES].fillna(0.0)
 
     # Run model on all players at once
     X = df[FEATURES].copy()
