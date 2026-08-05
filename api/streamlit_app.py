@@ -196,33 +196,41 @@ def get_2k27_predictions():
 @st.cache_data(ttl=3601)
 def get_2k27_movers():
     try:
-        up_res = requests.get(f"{API}/ask", params={
-            "q": "Top 10 players with biggest rating increase in nba-2k26 show player_name ovr_rating"
-        }, timeout=15).json()
-        dn_res = requests.get(f"{API}/ask", params={
-            "q": "Top 10 players with biggest rating decrease in nba-2k26 show player_name ovr_rating"
+        # Pull top 30 players by 2K26 rating — large enough pool for 10 risers + 10 decliners
+        res = requests.get(f"{API}/ask", params={
+            "q": "Top 30 players by ovr_rating in nba-2k26 show player_name ovr_rating"
         }, timeout=15).json()
 
-        def build_rows(names):
-            rows = []
-            for name in names:
-                p = requests.get(f"{API}/predict/2k27/{name}", timeout=10).json()
-                if "detail" not in p:
-                    last = p.get("last_known_ovr") or 0
-                    pred = p.get("rounded_ovr") or 0
-                    rows.append({
-                        "Player":         name,
-                        "2K26":           last,
-                        "Predicted 2K27": pred,
-                        "Δ":              round(pred - last, 1),
-                        "PTS":            round(float(p.get("current_stats", {}).get("pts") or 0), 1),
-                        "AGE":            round(float(p.get("current_stats", {}).get("age") or 0), 1),
-                    })
-            return rows or None
+        names = [r.get("player_name") for r in res.get("data", []) if r.get("player_name")]
 
-        up_names = [r.get("player_name") for r in up_res.get("data", []) if r.get("player_name")]
-        dn_names = [r.get("player_name") for r in dn_res.get("data", []) if r.get("player_name")]
-        return build_rows(up_names), build_rows(dn_names)
+        rows = []
+        for name in names:
+            p = requests.get(f"{API}/predict/2k27/{name}", timeout=10).json()
+            if "detail" not in p:
+                last = p.get("last_known_ovr") or 0
+                pred = p.get("rounded_ovr") or 0
+                rows.append({
+                    "Player":         name,
+                    "2K26":           last,
+                    "Predicted 2K27": pred,
+                    "Δ":              round(pred - last, 1),
+                    "PTS":            round(float(p.get("current_stats", {}).get("pts") or 0), 1),
+                    "AGE":            round(float(p.get("current_stats", {}).get("age") or 0), 1),
+                })
+
+        if not rows:
+            return None, None
+
+        df = pd.DataFrame(rows)
+
+        # Top 10 risers — biggest positive delta
+        up_rows = df[df["Δ"] >= 0].sort_values("Δ", ascending=False).head(10).to_dict("records")
+
+        # Top 10 decliners — biggest negative delta
+        dn_rows = df[df["Δ"] <= 0].sort_values("Δ", ascending=True).head(10).to_dict("records")
+
+        return up_rows if up_rows else None, dn_rows if dn_rows else None
+
     except Exception:
         return None, None
 
@@ -358,7 +366,7 @@ with tab1:
                         f'padding:0.6rem 1rem;border-radius:0 8px 8px 0;margin:0.5rem 0 1rem">'
                         f'<strong style="color:{vc}">{verdict}</strong>'
                         f'<span style="font-size:0.8rem;color:#aaa;margin-left:8px">'
-                        f'The model predicted a{predicted}</span></div>',
+                        f'For this season the model predicted a rating of {predicted}</span></div>',
                         unsafe_allow_html=True
                     )
 
