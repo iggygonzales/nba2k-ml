@@ -196,7 +196,7 @@ def get_2k27_predictions():
 @st.cache_data(ttl=3601)
 def get_2k27_movers():
     try:
-        # Pull top 30 players by 2K26 rating — large enough pool for 10 risers + 10 decliners
+        # Pull top 100 players by 2K26 rating for a large enough pool
         res = requests.get(f"{API}/ask", params={
             "q": "Top 100 players by ovr_rating in nba-2k26 show player_name ovr_rating"
         }, timeout=15).json()
@@ -223,11 +223,11 @@ def get_2k27_movers():
 
         df = pd.DataFrame(rows)
 
-        # Top 10 risers — biggest positive delta
-        up_rows = df[df["Δ"] >= 0].sort_values("Δ", ascending=False).head(10).to_dict("records")
+        # Top 10 risers — sorted by best delta (highest first)
+        up_rows = df.sort_values("Δ", ascending=False).head(10).to_dict("records")
 
-        # Top 10 decliners — biggest negative delta
-        dn_rows = df[df["Δ"] <= 0].sort_values("Δ", ascending=True).head(10).to_dict("records")
+        # Top 10 decliners — sorted by worst delta (lowest first)
+        dn_rows = df.sort_values("Δ", ascending=True).head(10).to_dict("records")
 
         return up_rows if up_rows else None, dn_rows if dn_rows else None
 
