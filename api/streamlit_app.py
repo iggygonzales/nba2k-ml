@@ -259,6 +259,8 @@ with tab1:
 
     if "featured_player" in st.session_state:
         initial_value = st.session_state.pop("featured_player")
+    elif "selected_player" in st.session_state:
+        initial_value = st.session_state["selected_player"]
     else:
         initial_value = ""
 
@@ -618,46 +620,58 @@ with tab2:
         # ── Section 3: Predicted 2K27 movers ─────────────────────────────────
         st.divider()
         st.subheader("Predicted 2K27 Movers")
-        st.caption("Who keeps rising and who keeps falling? Based on 2025-26 season stats.")
+        st.caption("Based on 2025-26 season stats — who will be rising and who keeps falling?")
 
         pcol1, pcol2 = st.columns(2)
 
         with pcol1:
-            st.markdown("#### 🚀 Predicted risers for 2K27")
+            st.markdown("#### 🚀 Predicted Biggest Risers for 2K27")
             if up_pred:
                 df_up_pred = pd.DataFrame(up_pred)
                 for c in ["2K26", "Predicted 2K27", "Δ", "PTS", "AGE"]:
                     if c in df_up_pred.columns:
                         df_up_pred[c] = pd.to_numeric(df_up_pred[c], errors="coerce").round(1)
-                df_up_pred = df_up_pred.sort_values("Δ", ascending=False)
-                df_up_pred.index = range(1, len(df_up_pred) + 1)
+                df_up_pred = df_up_pred[df_up_pred["Δ"] > 0].sort_values("Δ", ascending=False)
+                df_up_pred = df_up_pred.rename(columns={
+                    "Player": "Player Name",
+                    "2K26": "Ovr Prev",
+                    "Predicted 2K27": "Ovr Rating",
+                    "Δ": "Ovr Delta"
+                })
                 st.dataframe(
-                    df_up_pred.style.map(color_delta_style, subset=["Δ"]),
+                    df_up_pred[["Player Name", "Ovr Rating", "Ovr Prev", "Ovr Delta"]].style.map(
+                        color_delta_style, subset=["Ovr Delta"]
+                    ),
                     column_config={
-                        "2K26": num_col(), "Predicted 2K27": num_col(),
-                        "Δ": num_col(), "PTS": num_col(), "AGE": num_col(),
+                        "Ovr Rating": num_col(), "Ovr Prev": num_col(), "Ovr Delta": num_col(),
                     },
-                    use_container_width=True
+                    hide_index=True, use_container_width=True
                 )
             else:
                 st.info("Loading predictions...")
 
         with pcol2:
-            st.markdown("#### 📉 Predicted decliners for 2K27")
+            st.markdown("#### 📉 Predicted Biggest Decliners for 2K27")
             if dn_pred:
                 df_dn_pred = pd.DataFrame(dn_pred)
                 for c in ["2K26", "Predicted 2K27", "Δ", "PTS", "AGE"]:
                     if c in df_dn_pred.columns:
                         df_dn_pred[c] = pd.to_numeric(df_dn_pred[c], errors="coerce").round(1)
-                df_dn_pred = df_dn_pred.sort_values("Δ", ascending=True)
-                df_dn_pred.index = range(1, len(df_dn_pred) + 1)
+                df_dn_pred = df_dn_pred[df_dn_pred["Δ"] < 0].sort_values("Δ", ascending=True)
+                df_dn_pred = df_dn_pred.rename(columns={
+                    "Player": "Player Name",
+                    "2K26": "Ovr Prev",
+                    "Predicted 2K27": "Ovr Rating",
+                    "Δ": "Ovr Delta"
+                })
                 st.dataframe(
-                    df_dn_pred.style.map(color_delta_style, subset=["Δ"]),
+                    df_dn_pred[["Player Name", "Ovr Rating", "Ovr Prev", "Ovr Delta"]].style.map(
+                        color_delta_style, subset=["Ovr Delta"]
+                    ),
                     column_config={
-                        "2K26": num_col(), "Predicted 2K27": num_col(),
-                        "Δ": num_col(), "PTS": num_col(), "AGE": num_col(),
+                        "Ovr Rating": num_col(), "Ovr Prev": num_col(), "Ovr Delta": num_col(),
                     },
-                    use_container_width=True
+                    hide_index=True, use_container_width=True
                 )
             else:
                 st.info("Loading predictions...")
