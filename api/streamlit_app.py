@@ -21,7 +21,6 @@ st.set_page_config(
 # ── Global styles ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Card panel */
 .card {
     background: #13151c;
     border: 1px solid #1e2130;
@@ -29,16 +28,12 @@ st.markdown("""
     padding: 1.25rem 1.5rem;
     margin-bottom: 1rem;
 }
-
-/* OVR number colored by tier */
 .ovr-superstar { color: #f0c040; font-size: 3rem; font-weight: 800; line-height: 1; }
 .ovr-star      { color: #c084fc; font-size: 3rem; font-weight: 800; line-height: 1; }
 .ovr-elite     { color: #40a0f0; font-size: 3rem; font-weight: 800; line-height: 1; }
 .ovr-starter   { color: #34d399; font-size: 3rem; font-weight: 800; line-height: 1; }
 .ovr-rotation  { color: #f08040; font-size: 3rem; font-weight: 800; line-height: 1; }
 .ovr-bench     { color: #606080; font-size: 3rem; font-weight: 800; line-height: 1; }
-
-/* Tier badge */
 .badge {
     display: inline-block;
     padding: 3px 10px;
@@ -48,13 +43,9 @@ st.markdown("""
     letter-spacing: 0.1em;
     margin-top: 4px;
 }
-
-/* Delta pill */
 .delta-pos { color: #40d080; font-weight: 700; font-size: 1rem; }
 .delta-neg { color: #f04060; font-weight: 700; font-size: 1rem; }
 .delta-neu { color: #888;    font-weight: 700; font-size: 1rem; }
-
-/* Quick question buttons */
 div[data-testid="stHorizontalBlock"] button {
     border: 1px solid #2a2d3e !important;
     background: #13151c !important;
@@ -68,13 +59,29 @@ div[data-testid="stHorizontalBlock"] button:hover {
     color: #ffffff !important;
     background: #1a1e2e !important;
 }
-
-/* Tier legend */
 .legend-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 1rem; }
 .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: #aaa; }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ── Season / game mappings ────────────────────────────────────────────────────
+
+SEASON_OPTIONS = [
+    ("2025-26", "2K27 Prediction"),
+    ("2024-25", "2K26"),
+    ("2023-24", "2K25"),
+    ("2022-23", "2K24"),
+    ("2021-22", "2K23"),
+    ("2020-21", "2K22"),
+    ("2019-20", "2K21"),
+    ("2018-19", "2K20"),
+]
+
+SEASON_DISPLAY = {s: f"{s}  ({g})" for s, g in SEASON_OPTIONS}
+DISPLAY_TO_KEY = {v: k for k, v in SEASON_DISPLAY.items()}
+SEASON_TO_GAME = {s: g for s, g in SEASON_OPTIONS}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -98,7 +105,12 @@ def get_tier(ovr):
 
 def ovr_html(ovr, label="OVR"):
     if ovr is None:
-        return f'<div class="card"><span style="color:#555;font-size:2rem">N/A</span></div>'
+        return (
+            f'<div class="card">'
+            f'<div style="font-size:0.75rem;color:#888;margin-bottom:4px">{label}</div>'
+            f'<span style="color:#555;font-size:2rem">N/A</span>'
+            f'</div>'
+        )
     tier_label, color, cls = get_tier(ovr)
     badge_html = (
         f'<span class="badge" style="background:{color}22;color:{color}">'
@@ -114,14 +126,10 @@ def ovr_html(ovr, label="OVR"):
 
 def delta_html(val):
     if val is None or val == 0:
-        return '<span class="delta-neu">→ 0</span>'
+        return '<span class="delta-neu">→ No change from 2K26</span>'
     arrow = "▲" if val > 0 else "▼"
     cls   = "delta-pos" if val > 0 else "delta-neg"
     return f'<span class="{cls}">{arrow} {val:+.1f} from 2K26</span>'
-
-def delta_color_metric(val):
-    if val is None or val == 0: return "off"
-    return "normal" if val > 0 else "inverse"
 
 def format_game_version(gv):
     return gv.replace("nba-", "").upper()
@@ -142,7 +150,7 @@ def tier_legend_html():
         for threshold, label, color, _ in TIERS[:-1]
     ] + [
         '<div class="legend-item">'
-        f'<span class="legend-dot" style="background:#606080"></span>'
+        '<span class="legend-dot" style="background:#606080"></span>'
         'BENCH (&lt;75)'
         '</div>'
     ])
@@ -232,11 +240,14 @@ with tab1:
             label_visibility="collapsed",
         )
     with season_col:
-        season = st.selectbox(
+        season_display = st.selectbox(
             "Season",
-            ["2024-25", "2023-24", "2022-23", "2021-22", "2020-21", "2019-20", "2018-19"],
+            [SEASON_DISPLAY[s] for s, _ in SEASON_OPTIONS],
             label_visibility="collapsed"
         )
+        season_key = DISPLAY_TO_KEY[season_display]
+        game_label = SEASON_TO_GAME[season_key]
+        is_predict_season = season_key == "2025-26"
 
     selected = None
     if player_input and len(player_input) >= 2:
@@ -261,25 +272,43 @@ with tab1:
 
     if selected:
         try:
-            player_res = get_player_rating(selected, season)
-            pred_res   = get_2k27_prediction(selected)
+            pred_res    = get_2k27_prediction(selected)
             history_res = get_player_history(selected)
+            if not is_predict_season:
+                player_res = get_player_rating(selected, season_key)
+            else:
+                player_res = None
         except Exception:
             st.error("Could not load player data — API issue")
-            player_res  = {"detail": "error"}
             pred_res    = {"detail": "error"}
             history_res = {}
+            player_res  = None
 
-        # ── OVR cards row ─────────────────────────────────────────────────────
         col1, col2 = st.columns(2)
 
+        # ── Left column: current season rating (or info if 2025-26) ──────────
         with col1:
-            if "detail" not in player_res:
+            if is_predict_season:
+                st.markdown(
+                    '<div class="card" style="border-color:#40a0f030">'
+                    '<div style="font-size:0.75rem;color:#40a0f0;margin-bottom:8px">2025-26 SEASON</div>'
+                    '<p style="color:#aaa;font-size:0.9rem;margin:0">The 2025-26 season is the basis '
+                    'for 2K27 predictions. No 2K rating exists yet — see the predicted rating →</p>'
+                    '</div>',
+                    unsafe_allow_html=True
+                )
+            elif player_res and "detail" not in player_res:
                 actual    = player_res.get("actual_ovr")
                 predicted = player_res.get("predicted_ovr")
-                st.markdown(ovr_html(int(actual) if actual else None, f"2K26 Rating — {season}"), unsafe_allow_html=True)
-                if predicted:
-                    diff = round((actual or 0) - predicted, 1)
+
+                st.markdown(
+                    ovr_html(int(actual) if actual else None,
+                             f"{game_label} Rating — {season_key}"),
+                    unsafe_allow_html=True
+                )
+
+                if predicted and actual:
+                    diff = round(actual - predicted, 1)
                     if abs(diff) < 1.5:
                         verdict, vc = "Fairly rated by stats", "#40d080"
                     elif diff > 0:
@@ -294,9 +323,10 @@ with tab1:
                         f'Model expects {predicted}</span></div>',
                         unsafe_allow_html=True
                     )
+
                 stats = player_res.get("stats", {})
                 st.markdown('<div class="card">', unsafe_allow_html=True)
-                st.caption("Season stats")
+                st.caption(f"Season stats — {season_key}")
                 st.dataframe(
                     pd.DataFrame([stats]).rename(columns={
                         "pts": "PTS", "reb": "REB", "ast": "AST",
@@ -310,8 +340,9 @@ with tab1:
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
             else:
-                st.warning(f"No data for {selected} in {season}")
+                st.warning(f"No {game_label} rating found for {selected}")
 
+        # ── Right column: 2K27 prediction ────────────────────────────────────
         with col2:
             if "detail" not in pred_res:
                 last_ovr  = pred_res.get("last_known_ovr")
@@ -351,17 +382,14 @@ with tab1:
             fig = go.Figure()
 
             # Shade predicted region
-            all_x = list(actual_df["game_label"])
-            if "detail" not in pred_res:
-                all_x.append("2K27")
-
-            if len(actual_df) > 0:
+            if len(actual_df) > 0 and "detail" not in pred_res:
                 last_label = actual_df.iloc[-1]["game_label"]
                 fig.add_vrect(
                     x0=last_label, x1="2K27",
                     fillcolor="#40a0f0", opacity=0.05,
                     layer="below", line_width=0,
-                    annotation_text="Predicted", annotation_position="top left",
+                    annotation_text="Predicted",
+                    annotation_position="top left",
                     annotation_font=dict(color="#40a0f0", size=11)
                 )
 
@@ -381,7 +409,7 @@ with tab1:
 
             # Predicted 2K27 line
             if "detail" not in pred_res and len(actual_df) > 0:
-                last_row  = actual_df.iloc[-1]
+                last_row     = actual_df.iloc[-1]
                 pred_ovr_val = pred_res.get("rounded_ovr")
                 fig.add_trace(go.Scatter(
                     x=[last_row["game_label"], "2K27"],
@@ -392,7 +420,7 @@ with tab1:
                     marker=dict(size=12, color="#40a0f0", symbol="star"),
                     text=["", str(pred_ovr_val)],
                     textposition="top center",
-                    textfont=dict(color="#40a0f0", size=12, weight=700),
+                    textfont=dict(color="#40a0f0", size=12),
                     hovertemplate="<b>%{x}</b><br>Predicted OVR: %{y}<extra></extra>"
                 ))
 
@@ -467,7 +495,6 @@ with tab2:
     top10, improved, declined = get_leaderboard()
     pred_rows = get_2k27_predictions()
 
-    # Tier legend at top
     st.markdown("**Tier guide:**")
     st.markdown(tier_legend_html(), unsafe_allow_html=True)
 
@@ -515,7 +542,6 @@ with tab2:
 
         st.divider()
         st.subheader("Biggest movers in 2K26")
-
         mcol1, mcol2 = st.columns(2)
 
         with mcol1:
