@@ -78,7 +78,7 @@ jobs:
             (1628983,2024, 92, 'thunder',          'nba-2k25', false)
           ON CONFLICT DO NOTHING;
 
-          INSERT INTO stats (player_id, season_year, team_abbr, age, gp, min, pts, reb, ast, stl, blk, tov, fg_pct, fg3_pct, ft_pct, net_rating, usg_pct, ast_pct, ast_to, pie)
+          INSERT INTO stats (player_id, season_year, team_abbr, age, gp, min, pts, reb, ast, stl, blk, tov, fg_pct, fg3_pct, ft_pct, net_rating, usg_pct, ast_pct, ast_to, per)
           VALUES
             (2544,   2025, 'LAL', 40.0, 70, 35.0, 24.4, 7.8, 8.2, 1.1, 0.5, 3.2, 0.540, 0.410, 0.750, 5.0, 0.310, 0.350, 2.50, 0.180),
             (203999, 2025, 'DEN', 30.0, 70, 36.0, 29.6,12.7,10.2, 1.8, 0.6, 3.3, 0.580, 0.420, 0.800,10.5, 0.285, 0.398, 3.11, 0.206),
