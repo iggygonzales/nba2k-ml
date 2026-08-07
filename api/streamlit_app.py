@@ -11,6 +11,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 API = "http://18.222.150.138:8000"
+# API = "http://localhost:8000"
 
 st.set_page_config(
     page_title="NBA 2K Rating Predictor",

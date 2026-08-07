@@ -66,7 +66,7 @@ Database schema — ml_dataset view (use this for ALL queries):
     player_id, player_name, season, game_version, season_year,
     ovr_rating, is_rookie, age, gp, min,
     pts, reb, ast, stl, blk, tov,
-    fg_pct, fg3_pct, ft_pct, net_rating, usg_pct, ast_pct, ast_to, pie,
+    fg_pct, fg3_pct, ft_pct, net_rating, usg_pct, ast_pct, ast_to, per,
     career_year, pts_delta, reb_delta, ast_delta, ovr_prev, ovr_delta,
     split (values: 'train', 'test', 'predict')
 
@@ -207,7 +207,7 @@ class PlayerStats(BaseModel):
     net_rating:  float
     usg_pct:     float
     ast_pct:     float
-    pie:         float
+    per:         float
     age:         float
     gp:          int
     career_year: int
@@ -251,6 +251,75 @@ def predict(stats: PlayerStats):
         "model":         "XGBoost"
     }
 
+@app.get("/leaderboard/2k27-movers")
+def get_2k27_movers_endpoint():
+    """Returns predicted 2K27 risers and decliners directly from DB + model."""
+    engine = get_engine()
+    
+    # Get all players with 2025-26 stats directly from DB - no LLM needed
+    df = pd.read_sql("""
+        SELECT 
+            p.full_name as player_name,
+            r.ovr_rating as last_2k26,
+            st.pts, st.reb, st.ast, st.age, st.gp,
+            st.stl, st.blk, st.tov,
+            st.fg_pct, st.fg3_pct, st.ft_pct,
+            st.net_rating, st.usg_pct, st.ast_pct, st.per,
+            f.ovr_prev, f.pts_delta, f.reb_delta, f.ast_delta,
+            f.career_year
+        FROM stats st
+        JOIN players p ON p.player_id = st.player_id
+        JOIN seasons s ON s.season_year = st.season_year
+        LEFT JOIN ratings r ON r.player_id = st.player_id AND r.season_year = 2025
+        LEFT JOIN features f ON f.player_id = st.player_id AND f.season_year = 2026
+        WHERE st.season_year = 2026
+        AND r.ovr_rating IS NOT NULL
+        AND st.gp >= 20
+        ORDER BY r.ovr_rating DESC
+        LIMIT 100
+    """, engine)
+
+    if df.empty:
+        raise HTTPException(status_code=404, detail="No data found")
+
+    # Fill nulls
+    for col in ["pts_delta", "reb_delta", "ast_delta"]:
+        df[col] = df[col].fillna(0.0)
+    df["ovr_prev"] = df["ovr_prev"].fillna(75.0)
+    df[FEATURES] = df[FEATURES].fillna(0.0)
+
+    missing = [f for f in FEATURES if f not in df.columns]
+    print(f"Missing features: {missing}")
+
+    # Run model on all players at once
+    X = df[FEATURES].copy()
+    preds = model.predict(X)
+    preds = np.clip(preds, 67, 99).round(1)
+
+    df["predicted_2k27"] = preds
+    df["delta"] = (df["predicted_2k27"] - df["last_2k26"]).round(1)
+
+    # Top 10 risers and decliners
+    risers   = df.sort_values("delta", ascending=False).head(10)
+    decliners = df.sort_values("delta", ascending=True).head(10)
+
+    def to_rows(d):
+        return [
+            {
+                "Player":         str(row["player_name"]),
+                "2K26":           to_python(row["last_2k26"]),
+                "Predicted 2K27": int(round(row["predicted_2k27"])),
+                "Δ":              to_python(row["delta"]),
+                "PTS":            to_python(row["pts"]),
+                "AGE":            to_python(row["age"]),
+            }
+            for _, row in d.iterrows()
+        ]
+
+    return {
+        "risers":    to_rows(risers),
+        "decliners": to_rows(decliners),
+    }
 
 @app.get("/player/{player_name}")
 def predict_for_player(player_name: str, season: Optional[str] = "2024-25"):
@@ -414,69 +483,3 @@ def ask(q: str):
                      for row in df.head(20).to_dict(orient="records")]
     }
 
-@app.get("/leaderboard/2k27-movers")
-def get_2k27_movers_endpoint():
-    """Returns predicted 2K27 risers and decliners directly from DB + model."""
-    engine = get_engine()
-    
-    # Get all players with 2025-26 stats directly from DB — no LLM needed
-    df = pd.read_sql("""
-        SELECT 
-            p.full_name as player_name,
-            r.ovr_rating as last_2k26,
-            st.pts, st.reb, st.ast, st.age, st.gp,
-            st.stl, st.blk, st.tov,
-            st.fg_pct, st.fg3_pct, st.ft_pct,
-            st.net_rating, st.usg_pct, st.ast_pct, st.pie,
-            f.ovr_prev, f.pts_delta, f.reb_delta, f.ast_delta,
-            f.career_year
-        FROM stats st
-        JOIN players p ON p.player_id = st.player_id
-        JOIN seasons s ON s.season_year = st.season_year
-        LEFT JOIN ratings r ON r.player_id = st.player_id AND r.season_year = 2025
-        LEFT JOIN features f ON f.player_id = st.player_id AND f.season_year = 2026
-        WHERE st.season_year = 2026
-        AND r.ovr_rating IS NOT NULL
-        AND st.gp >= 20
-        ORDER BY r.ovr_rating DESC
-        LIMIT 100
-    """, engine)
-
-    if df.empty:
-        raise HTTPException(status_code=404, detail="No data found")
-
-    # Fill nulls
-    for col in ["pts_delta", "reb_delta", "ast_delta"]:
-        df[col] = df[col].fillna(0.0)
-    df["ovr_prev"] = df["ovr_prev"].fillna(75.0)
-    df[FEATURES] = df[FEATURES].fillna(0.0)
-
-    # Run model on all players at once
-    X = df[FEATURES].copy()
-    preds = model.predict(X)
-    preds = np.clip(preds, 67, 99).round(1)
-
-    df["predicted_2k27"] = preds
-    df["delta"] = (df["predicted_2k27"] - df["last_2k26"]).round(1)
-
-    # Top 10 risers and decliners
-    risers   = df.sort_values("delta", ascending=False).head(10)
-    decliners = df.sort_values("delta", ascending=True).head(10)
-
-    def to_rows(d):
-        return [
-            {
-                "Player":         str(row["player_name"]),
-                "2K26":           to_python(row["last_2k26"]),
-                "Predicted 2K27": int(round(row["predicted_2k27"])),
-                "Δ":              to_python(row["delta"]),
-                "PTS":            to_python(row["pts"]),
-                "AGE":            to_python(row["age"]),
-            }
-            for _, row in d.iterrows()
-        ]
-
-    return {
-        "risers":    to_rows(risers),
-        "decliners": to_rows(decliners),
-    }

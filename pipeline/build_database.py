@@ -2,7 +2,7 @@
 Build Database Pipeline
 -----------------------
 1. Loads all ratings CSVs from data/raw/ratings/
-2. Loads stats CSV from data/raw/stats/
+2. Loads all per-season stats CSVs from data/raw/stats/
 3. Fuzzy matches player names
 4. Joins on PLAYER_NAME + SEASON
 5. Bulk inserts everything into Postgres using SQLAlchemy
@@ -22,7 +22,7 @@ from thefuzz import process
 load_dotenv()
 
 RATINGS_DIR    = os.path.join("data", "raw", "ratings")
-STATS_PATH     = os.path.join("data", "raw", "stats", "nba_player_stats_2018_2026.csv")
+STATS_DIR      = os.path.join("data", "raw", "stats")
 PROCESSED_PATH = os.path.join("data", "processed", "joined_dataset.csv")
 FUZZY_THRESHOLD = 85
 
@@ -32,17 +32,46 @@ DATABASE_URL = os.getenv(
 )
 
 MANUAL_MAP = {
-    "Kristaps Porzingis": "Kristaps Porziņģis",
-    "Luka Doncic":        "Luka Dončić",
-    "TJ Leaf":            "T.J. Leaf",
-    "Moe Harkless":       "Maurice Harkless",
-    "Jonas Valanciunas":  "Jonas Valančiūnas",
-    "Nikola Vucevic":     "Nikola Vučević",
-    "Vlatko Cancar":      "Vlatko Čančar",
-    "Cameron Reynolds":   "Cam Reynolds",
-    "Anzejs Pasecniks":   "Anžejs Pasečņiks",
-    "Vit Krejci":         "Vít Krejčí",
-    "Alexandre Sarr":     "Alex Sarr",
+    # Existing correct entries
+    "Kristaps Porzingis":       "Kristaps Porziņģis",
+    "Luka Doncic":              "Luka Dončić",
+    "TJ Leaf":                  "T.J. Leaf",
+    "Moe Harkless":             "Maurice Harkless",
+    "Jonas Valanciunas":        "Jonas Valančiūnas",
+    "Nikola Vucevic":           "Nikola Vučević",
+    "Vlatko Cancar":            "Vlatko Čančar",
+    "Anzejs Pasecniks":         "Anžejs Pasečņiks",
+    "Vit Krejci":               "Vít Krejčí",
+    "Alexandre Sarr":           "Alex Sarr",
+
+    # Diacritics (ratings has ASCII, bref has accented)
+    "Dzanan Musa":              "Džanan Musa",
+    "Bojan Bogdanovic":         "Bojan Bogdanović",
+    "Bogdan Bogdanovic":        "Bogdan Bogdanović",
+    "Dairis Bertans":           "Dairis Bertāns",
+    "Milos Teodosic":           "Miloš Teodosić",
+    "Skal Labissiere":          "Skal Labissière",
+    "Timothe Luwawu-Cabarrot":  "Timothé Luwawu-Cabarrot",
+    "Donatas Motiejunas":       "Donatas Motiejūnas",
+    "Angel Delgado":            "Ángel Delgado",
+    "Jose Calderon":            "José Calderón",
+    "Nene":                     "Nenê",
+    "Cristiano Felicio":        "Cristiano Felício",
+
+    # Name variations — ratings name -> bref name
+    "Robert Williams":          "Robert Williams III",
+    "Vince Edwards":            "Vincent Edwards",
+    "Wade Baldwin":             "Wade Baldwin IV",
+    "Mitch Creek":              "Mitchell Creek",
+    "Cameron Reynolds":         "Cam Reynolds",
+    "DJ Stephens":              "D.J. Stephens",
+    "BJ Johnson":               "B.J. Johnson",
+    "Melvin Frazier":           "Melvin Frazier Jr.",
+    "AJ Green":                 "A.J. Green",
+
+    "Ante Zizic":               "Ante Žižić",
+    "Dario Saric":              "Dario Šarić",
+    "Luka Samanic":             "Luka Šamanić",
 }
 
 
@@ -75,11 +104,30 @@ def load_ratings():
 
 
 def load_stats():
-    df = pd.read_csv(STATS_PATH)
-    if "season_year" not in df.columns:
-        df["season_year"] = df["SEASON"].apply(lambda x: int(x.split("-")[0]) + 1)
-    print(f"Loaded {len(df)} stats rows across {df['SEASON'].nunique()} seasons")
-    return df
+    """
+    Load all per-season stats CSVs from data/raw/stats/.
+    Each file is named nba_player_stats_YYYY-YY.csv (e.g. nba_player_stats_2025-26.csv).
+    """
+    dfs = []
+    for f in sorted(os.listdir(STATS_DIR)):
+        if f.endswith(".csv") and f.startswith("nba_player_stats_"):
+            df = pd.read_csv(
+                os.path.join(STATS_DIR, f),
+                encoding="utf-8-sig"  # handles special characters like Dončić
+            )
+            dfs.append(df)
+
+    if not dfs:
+        raise FileNotFoundError(f"No stats CSVs found in {STATS_DIR}")
+
+    stats = pd.concat(dfs, ignore_index=True)
+
+    # Ensure season_year column exists
+    if "season_year" not in stats.columns:
+        stats["season_year"] = stats["SEASON"].apply(lambda x: int(x.split("-")[0]) + 1)
+
+    print(f"Loaded {len(stats)} stats rows across {stats['SEASON'].nunique()} seasons")
+    return stats
 
 
 # ── Name matching ─────────────────────────────────────────────────────────────
@@ -137,30 +185,40 @@ def join_datasets(ratings, stats, name_map):
 def write_to_postgres_bulk(merged, stats, engine):
     print("\nClearing existing data...")
     with engine.connect() as conn:
-        conn.execute(text("TRUNCATE ratings, stats, features, players RESTART IDENTITY CASCADE"))
+        for table in ["features", "ratings", "stats", "players"]:
+            conn.execute(text(f"""
+                DO $$ BEGIN
+                    IF EXISTS (SELECT FROM pg_tables WHERE tablename = '{table}') THEN
+                        EXECUTE 'TRUNCATE {table} RESTART IDENTITY CASCADE';
+                    END IF;
+                END $$;
+            """))
         conn.commit()
 
-    # ── Players ──────────────────────────────────────────────────────────────
-    players_df = stats[["PLAYER_ID", "PLAYER_NAME"]].drop_duplicates("PLAYER_ID").copy()
-    players_df["first_name"] = players_df["PLAYER_NAME"].apply(
-        lambda x: str(x).split(" ")[0]
-    )
-    players_df["last_name"] = players_df["PLAYER_NAME"].apply(
-        lambda x: " ".join(str(x).split(" ")[1:])
-    )
-    players_df.rename(columns={
-        "PLAYER_ID":   "player_id",
-        "PLAYER_NAME": "full_name",
-    }, inplace=True)
+    # ── Players ───────────────────────────────────────────────────────────────
+    # Basketball Reference has no PLAYER_ID so we generate our own integer IDs
+    # from unique player names across all seasons.
+    all_names = pd.Series(stats["PLAYER_NAME"].dropna().unique()).sort_values().reset_index(drop=True)
+    players_df = pd.DataFrame({
+        "player_id":  range(1, len(all_names) + 1),
+        "full_name":  all_names,
+        "first_name": all_names.apply(lambda x: str(x).split(" ")[0]),
+        "last_name":  all_names.apply(lambda x: " ".join(str(x).split(" ")[1:])),
+    })
+
+    # Build a lookup from name -> generated player_id for use below
+    name_to_id = dict(zip(players_df["full_name"], players_df["player_id"]))
+
     players_df.to_sql("players", engine, if_exists="append", index=False,
                       method="multi", chunksize=500)
     print(f"  Players inserted: {len(players_df)}")
 
     # ── Ratings ───────────────────────────────────────────────────────────────
-    valid_ids = set(players_df["player_id"].tolist())
-    rated = merged[merged["PLAYER_ID"].notna()].copy()
-    rated = rated[rated["PLAYER_ID"].astype(int).isin(valid_ids)]
-    rated["player_id"]    = rated["PLAYER_ID"].astype(int)
+    rated = merged.copy()
+    # Map the matched player name -> generated player_id
+    rated["player_id"] = rated["PLAYER_NAME_MATCHED"].map(name_to_id)
+    rated = rated[rated["player_id"].notna()].copy()
+    rated["player_id"]    = rated["player_id"].astype(int)
     rated["season_year"]  = rated["SEASON"].apply(lambda x: int(x.split("-")[0]) + 1)
     rated["ovr_rating"]   = rated["RATING"].where(pd.notna(rated["RATING"]), None)
     rated["team_in_game"] = rated.get("TEAM_2k", rated.get("TEAM", ""))
@@ -177,10 +235,13 @@ def write_to_postgres_bulk(merged, stats, engine):
                       method="multi", chunksize=500)
     print(f"  Ratings inserted: {len(ratings_df)}")
 
-    # ── Stats (all seasons including 2025-26) ─────────────────────────────────
-    all_stats = stats[stats["PLAYER_ID"].isin(valid_ids)].copy()
+    # ── Stats ─────────────────────────────────────────────────────────────────
+    all_stats = stats.copy()
+    all_stats["player_id"] = all_stats["PLAYER_NAME"].map(name_to_id)
+    all_stats = all_stats[all_stats["player_id"].notna()].copy()
+    all_stats["player_id"] = all_stats["player_id"].astype(int)
+
     all_stats.rename(columns={
-        "PLAYER_ID":         "player_id",
         "season_year":       "season_year",
         "TEAM_ABBREVIATION": "team_abbr",
         "AGE":               "age",
@@ -199,20 +260,28 @@ def write_to_postgres_bulk(merged, stats, engine):
         "USG_PCT":           "usg_pct",
         "AST_PCT":           "ast_pct",
         "AST_TO":            "ast_to",
-        "PIE":               "pie",
+        "TS%":               "ts_pct",
+        "PER":               "per",
     }, inplace=True)
 
     stats_cols = [
-        "player_id", "season_year", "team_abbr", "age",
+        "player_id", "season_year", "age",
         "gp", "min", "pts", "reb", "ast", "stl", "blk", "tov",
         "fg_pct", "fg3_pct", "ft_pct",
-        "net_rating", "usg_pct", "ast_pct", "ast_to", "pie",
+        "net_rating", "usg_pct", "ast_pct", "ast_to", "per",
     ]
-    all_stats = all_stats[stats_cols].drop_duplicates(["player_id", "season_year"])
+    all_stats = (
+        all_stats[stats_cols]
+        .dropna(subset=["season_year"])
+        .sort_values("gp", ascending=False)
+        .drop_duplicates(["player_id", "season_year"], keep="first")
+    )
+    all_stats["net_rating"] = all_stats["net_rating"].clip(-999, 999)
     all_stats.to_sql("stats", engine, if_exists="append", index=False,
                      method="multi", chunksize=500)
     print(f"  Stats inserted:   {len(all_stats)}")
 
+    
 
 # ── Build features ────────────────────────────────────────────────────────────
 
@@ -265,7 +334,7 @@ def main():
     merged = join_datasets(ratings, stats, name_map)
 
     os.makedirs(os.path.dirname(PROCESSED_PATH), exist_ok=True)
-    merged.to_csv(PROCESSED_PATH, index=False)
+    merged.to_csv(PROCESSED_PATH, index=False, encoding="utf-8-sig")
     print(f"\nSaved joined dataset to {PROCESSED_PATH}")
 
     engine = get_engine()

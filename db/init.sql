@@ -57,11 +57,11 @@ CREATE TABLE IF NOT EXISTS stats (
     fg_pct          NUMERIC(5,3),
     fg3_pct         NUMERIC(5,3),
     ft_pct          NUMERIC(5,3),
-    net_rating      NUMERIC(6,2),
+    net_rating      NUMERIC(7,2),
     usg_pct         NUMERIC(5,3),
     ast_pct         NUMERIC(5,3),
     ast_to          NUMERIC(5,2),
-    pie             NUMERIC(5,3),
+    per             NUMERIC(5,3),
     fetched_at      TIMESTAMP DEFAULT NOW(),
     PRIMARY KEY (player_id, season_year)
 );
@@ -107,7 +107,7 @@ SELECT
     st.gp, st.min, st.pts, st.reb, st.ast,
     st.stl, st.blk, st.tov,
     st.fg_pct, st.fg3_pct, st.ft_pct,
-    st.net_rating, st.usg_pct, st.ast_pct, st.ast_to, st.pie,
+    st.net_rating, st.usg_pct, st.ast_pct, st.ast_to, st.per,
     f.career_year,
     f.pts_delta, f.reb_delta, f.ast_delta,
     f.ovr_prev, f.ovr_delta,
