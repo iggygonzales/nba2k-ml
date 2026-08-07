@@ -90,7 +90,7 @@ def test_predict_raw_stats():
         "stl": 1.2, "blk": 0.5, "tov": 3.0,
         "fg_pct": 0.50, "fg3_pct": 0.35, "ft_pct": 0.75,
         "net_rating": 5.0, "usg_pct": 0.30, "ast_pct": 0.35,
-        "pie": 0.15, "age": 28.0, "gp": 70,
+        "per": 0.15, "age": 28.0, "gp": 70,
         "career_year": 5, "pts_delta": 2.0,
         "reb_delta": 0.5, "ast_delta": 1.0, "ovr_prev": 88.0
     }
