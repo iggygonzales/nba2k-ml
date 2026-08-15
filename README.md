@@ -301,26 +301,26 @@ Interactive docs: `http://18.220.131.170:8000/docs`
 - XGBoost outperforms PyTorch on this dataset — expected with ~2,700 training rows
 - 2K ratings are extremely stable year-over-year (avg 76.3–76.9 across all seasons)
 - The model underestimates stars (reputation premium) and overestimates low-minute players
-- `net_rating` has surprisingly low correlation (0.25) — 2K ignores team context
+
 
 ---
 
 ## Predicted 2K27 Ratings (Top 10)
 
-Based on 2025-26 season stats as of mid-2026:
+Based on 2025-26 season stats:
 
 | Player | 2K26 Rating | Predicted 2K27 | Change |
 |---|---|---|---|
 | Shai Gilgeous-Alexander | 98 | 97 | -1 |
 | Nikola Jokić | 98 | 96 | -2 |
-| Giannis Antetokounmpo | 97 | 95 | -2 |
-| Luka Dončić | 95 | 95 | 0 |
+| Giannis Antetokounmpo | 97 | 96 | -1 |
+| Luka Dončić | 95 | 96 | +1 |
+| Victor Wembanyama | 94 | 95 | +1 |
+| Kawhi Leonard | 92 | 95 | +3 |
+| Cade Cunningham | 92 | 94 | +2 |
 | Anthony Edwards | 95 | 93 | -2 |
-| Victor Wembanyama | 94 | 94 | 0 |
-| LeBron James | 94 | 89 | -5 |
-| Stephen Curry | 94 | 90 | -4 |
-| Jayson Tatum | 94 | 88 | -6 |
-| Jalen Brunson | 93 | 91 | -2 |
+| Stephen Curry | 94 | 93 | -1 |
+| Donovan Mitchell | 93 | 93 | 0 |
 
 ---
 
