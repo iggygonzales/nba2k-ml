@@ -2,7 +2,7 @@
 
 ![CI/CD](https://github.com/iggygonzales/nba2k-ml/actions/workflows/ci-cd.yml/badge.svg)
 
-A full end-to-end data science and machine learning project that scrapes NBA 2K player ratings (2K20–2K26), joins them with real NBA stats from the official NBA API, stores everything in a PostgreSQL database, trains ML models to predict 2K ratings, and serves predictions via a FastAPI + Streamlit dashboard.
+A full end-to-end data science and machine learning project that scrapes NBA 2K player ratings (2K20–2K26), joins them with real NBA stats from Basketball Reference, stores everything in a PostgreSQL database, trains ML models to predict 2K ratings, and serves predictions via a FastAPI + Streamlit dashboard.
 
 The project predicts **NBA 2K27 ratings** using current 2025-26 season stats — before the game is released.
 
@@ -11,7 +11,7 @@ The project predicts **NBA 2K27 ratings** using current 2025-26 season stats —
 ## Live Demo
 
 🌐 **Dashboard:** https://nba2k-ml.streamlit.app
-🔌 **API:** http://18.222.150.138:8000/docs
+🔌 **API:** http://18.220.131.170:8000/docs
 
 ---
 
@@ -33,7 +33,7 @@ This project was built as a portfolio piece targeting data science, ML engineeri
 | Layer | Tools |
 |---|---|
 | Scraping | Selenium, webdriver-manager |
-| NBA Stats | nba_api |
+| NBA Stats | Basketball Reference (via requests + pandas) |
 | Data Processing | pandas, thefuzz |
 | Database | PostgreSQL 16 (Docker), SQLAlchemy, psycopg2 |
 | ML | scikit-learn, XGBoost, PyTorch, SHAP |
@@ -59,13 +59,17 @@ nba2k-ml/
 ├── data/
 │   ├── raw/
 │   │   ├── ratings/          # Scraped 2K ratings per season (CSV)
-│   │   └── stats/            # NBA API stats per season (CSV)
+│   │   └── stats/            # Per-season stats CSVs (one file per season)
+│   │       ├── nba_player_stats_2018-19.csv
+│   │       ├── nba_player_stats_2019-20.csv
+│   │       ├── ...
+│   │       └── nba_player_stats_2025-26.csv
 │   └── processed/
 │       └── joined_dataset.csv
 │
 ├── scraper/
 │   ├── scrape_ratings.py     # Selenium scraper — HoopsHype 2K20-2K26
-│   └── fetch_nba_stats.py    # NBA API stats fetcher 2018-19 to 2025-26
+│   └── fetch_nba_stats.py    # Basketball Reference stats fetcher (2018-19 to 2025-26)
 │
 ├── pipeline/
 │   ├── build_database.py     # Fuzzy join + bulk insert to Postgres
@@ -105,17 +109,17 @@ nba2k-ml/
 ## Database Schema
 
 ```
-players         — one row per unique player (player_id from NBA API)
+players         — one row per unique player (name-generated integer ID)
 seasons         — season reference table (2018-19 through 2025-26)
 ratings         — 2K OVR rating per player per season (composite PK)
-stats           — NBA per-game + advanced stats per player per season
+stats           — per-game + advanced stats per player per season
 features        — engineered features (deltas, career year, etc.)
 ml_dataset      — view joining all tables, ready for ML
 ```
 
 The `ml_dataset` view includes a `split` column:
-- `train` — 2K20 through 2K24 (seasons 2018-19 to 2022-23)
-- `test`  — 2K25 and 2K26 (seasons 2023-24 and 2024-25)
+- `train`   — 2K20 through 2K24 (seasons 2018-19 to 2022-23)
+- `test`    — 2K25 and 2K26 (seasons 2023-24 and 2024-25)
 - `predict` — 2025-26 stats with no rating yet (2K27 predictions)
 
 ---
@@ -129,7 +133,7 @@ The `ml_dataset` view includes a `split` column:
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/YOUR_USERNAME/nba2k-ml.git
+git clone https://github.com/iggygonzales/nba2k-ml.git
 cd nba2k-ml
 ```
 
@@ -155,10 +159,12 @@ Starts Postgres, pgAdmin, and the FastAPI server.
 
 ### 5. Scrape and build the database
 ```bash
-python scraper/scrape_ratings.py      # ~30 mins
-python scraper/fetch_nba_stats.py     # ~5 mins
+python scraper/scrape_ratings.py      # ~30 mins (Selenium, scrapes HoopsHype)
+python scraper/fetch_nba_stats.py     # ~5 mins (Basketball Reference)
 python pipeline/build_database.py
 ```
+
+`fetch_nba_stats.py` is incremental — it skips finished seasons already on disk and only refetches the current season, whose stats change as games are played.
 
 ### 6. Run the dashboard
 ```bash
@@ -166,6 +172,28 @@ streamlit run api/streamlit_app.py
 ```
 
 Open `http://localhost:8501`
+
+---
+
+## Stats Data Source
+
+Player stats are fetched from **Basketball Reference** (not the NBA API, which has become unreliable due to bot-blocking). The fetcher pulls three pages per season:
+
+- `leagues/NBA_{year}_per_game.html` — points, rebounds, assists, shooting splits, etc.
+- `leagues/NBA_{year}_advanced.html` — PER, USG%, AST%, BPM, TS%
+- `leagues/NBA_{year}.html` — league averages (used to normalise PIE-equivalent stats)
+
+Each season is saved as a separate CSV (`nba_player_stats_2018-19.csv` through `nba_player_stats_2025-26.csv`) so historical data is never re-fetched unnecessarily.
+
+**NBA API → Basketball Reference column mapping:**
+
+| Model feature | NBA API | Basketball Reference |
+|---|---|---|
+| pts, reb, ast, stl, blk, tov | identical | identical |
+| fg_pct, fg3_pct, ft_pct | identical | FG%, 3P%, FT% |
+| usg_pct, ast_pct | identical | USG%, AST% |
+| net_rating | NET_RATING | BPM (Box Plus/Minus) |
+| per | PIE | PER (Player Efficiency Rating) |
 
 ---
 
@@ -194,14 +222,14 @@ live API updated automatically
 ## Dashboard Features
 
 - **Player Lookup** — search any NBA player, see their current 2K26 rating, predicted 2K27 rating, career trajectory chart, and overrated/underrated indicator
-- **Leaderboard** — top 10 rated players in 2K26, predicted 2K27 top 10, biggest rating movers
+- **Leaderboard** — top 10 rated players in 2K26, predicted 2K27 top 10, biggest rating movers in 2K26, predicted 2K27 risers and decliners
 - **Ask Anything** — natural language queries powered by Claude (text-to-SQL), with quick question buttons
 
 ---
 
 ## API Endpoints
 
-Base URL: `http://18.222.150.138:8000`
+Base URL: `http://18.220.131.170:8000`
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -210,10 +238,11 @@ Base URL: `http://18.222.150.138:8000`
 | GET | `/player/{name}` | Predict rating for a player (current season) |
 | GET | `/player/{name}/history` | Full career rating + stats history |
 | GET | `/predict/2k27/{name}` | Predict 2K27 rating from 2025-26 stats |
+| GET | `/leaderboard/2k27-movers` | Predicted biggest risers and decliners for 2K27 |
 | GET | `/ask?q={question}` | Natural language query (text-to-SQL) |
 | POST | `/predict` | Predict rating from raw stats JSON |
 
-Interactive docs: `http://18.222.150.138:8000/docs`
+Interactive docs: `http://18.220.131.170:8000/docs`
 
 ### Example responses
 
@@ -258,15 +287,15 @@ Interactive docs: `http://18.222.150.138:8000/docs`
 
 | Model | MAE | R² | Notes |
 |---|---|---|---|
-| XGBoost | 1.16 | 0.942 | Primary model, best performance |
-| PyTorch MLP | 1.51 | 0.909 | Neural net, 4 layers, 500 epochs |
+| XGBoost | 1.23 | 0.933 | Primary model, best performance |
+| PyTorch MLP | 1.57 | 0.904 | Neural net, 4 layers, 500 epochs |
 
 **Top predictors (SHAP analysis):**
-1. `pts` — scoring is by far the strongest driver (0.91 correlation)
-2. `ovr_prev` — last season's rating, 2K is conservative year-over-year
-3. `pie` — player impact estimate
-4. `usg_pct` — usage rate
-5. `ast` — assists
+1. `pts` — scoring is the #1 driver, high scorers push ratings up massively
+2. `ovr_prev` — last season's rating is the #2 driver. 2K is conservative — if you were rated 90 last year, you'll likely be near 90 this year
+3. `net_rating` — measures their team’s point differential (points scored minus points allowed) per 100 possessions while that specific player is on the court
+4. `per` — player efficiency rating, helps summarize a basketball player's overall per-minute box-score productivity into a single number
+5. `gp` — games played matters, players who miss games get penalized
 
 **Key findings:**
 - XGBoost outperforms PyTorch on this dataset — expected with ~2,700 training rows
@@ -278,7 +307,7 @@ Interactive docs: `http://18.222.150.138:8000/docs`
 
 ## Predicted 2K27 Ratings (Top 10)
 
-Based on 2025-26 season stats as of March 2026:
+Based on 2025-26 season stats as of mid-2026:
 
 | Player | 2K26 Rating | Predicted 2K27 | Change |
 |---|---|---|---|
@@ -304,14 +333,19 @@ Based on 2025-26 season stats as of March 2026:
 | Predict | ~558 | 2025-26 | 2K27 predictions |
 | **Total** | **~4,442** | **8 seasons** | |
 
-Stats per row: PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, NET_RTG, USG%, AST%, AST/TO, PIE, AGE, GP, MIN
+Stats per row: PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, BPM, USG%, AST%, AST/TO, PER, TS%, AGE, GP, MIN
 
 ---
 
 ## Key Design Decisions
 
+- **Basketball Reference over NBA API** — NBA's official API began blocking automated requests; Basketball Reference provides the same stats reliably with no authentication required
+- **Per-season CSV files** — stats saved as individual files per season (`nba_player_stats_2025-26.csv`) so historical data is never re-fetched; only the current in-progress season is refreshed each run
+- **Incremental stats fetching** — skips finished seasons already on disk, always refreshes the current season whose stats change as games are played
+- **PER over PIE** — PER (Player Efficiency Rating) replaces PIE as the player impact metric; PER is available natively from Basketball Reference and is a well-established industry standard
+- **Name-generated player IDs** — player IDs are generated from sorted unique player names rather than relying on NBA API IDs, which are unavailable from Basketball Reference
 - **Team-by-team scraping** — bypasses JS pagination issues on HoopsHype
-- **Fuzzy name matching** — handles special characters (Luka Dončić, Nikola Jokić)
+- **Fuzzy name matching** — handles special characters (Luka Dončić, Nikola Jokić) and name variations across sources
 - **unaccent PostgreSQL extension** — accent-insensitive API queries
 - **Composite primary keys** — `(player_id, season_year)` in ratings and stats
 - **Season-based train/test split** — no data leakage across years
@@ -327,7 +361,8 @@ Stats per row: PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, NET_RTG, USG%, AST%,
 
 ## Roadmap
 
-- [x] Data pipeline (scraping + NBA API)
+- [x] Data pipeline (scraping + Basketball Reference stats)
+- [x] Per-season incremental stats fetching
 - [x] PostgreSQL database with proper schema
 - [x] Fuzzy name matching and join
 - [x] EDA notebook
@@ -339,6 +374,7 @@ Stats per row: PTS, REB, AST, STL, BLK, TOV, FG%, 3P%, FT%, NET_RTG, USG%, AST%,
 - [x] Accent-insensitive player search
 - [x] LLM natural language query layer
 - [x] 2K27 rating predictions
+- [x] Predicted 2K27 movers leaderboard (risers + decliners)
 - [x] Streamlit dashboard (player lookup, leaderboard, ask anything)
 - [x] Cloud deployment (AWS EC2)
 - [x] CI/CD pipeline (GitHub Actions — test + deploy)

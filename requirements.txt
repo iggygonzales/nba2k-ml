@@ -48,3 +48,4 @@ seaborn==0.13.2
 # CI/CD
 pytest==8.1.1
 httpx==0.27.0
+streamlit-searchbox

@@ -9,13 +9,14 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.graph_objects as go
+from streamlit_searchbox import st_searchbox
 
 API = st.secrets.get("API_URL", "http://localhost:8000")
 # old API = "http://18.222.150.138:8000"
 # API = "http://localhost:8000"
 
 st.set_page_config(
-    page_title="NBA 2K Rating Predictor",
+    page_title="NBA2K27 Rating Predictor",
     page_icon="🏀",
     layout="wide"
 )
@@ -137,8 +138,12 @@ def format_game_version(gv):
     return gv.replace("nba-", "").upper()
 
 def color_delta_style(val):
-    if pd.isna(val) or val == 0: return "color: #888"
-    return "color: #40d080" if val > 0 else "color: #f04060"
+    try:
+        v = float(val)
+    except (ValueError, TypeError):
+        return "color: #888"
+    if v == 0: return "color: #888"
+    return "color: #40d080" if v > 0 else "color: #f04060"
 
 def num_col(fmt="%.1f"):
     return st.column_config.NumberColumn(format=fmt)
@@ -175,7 +180,8 @@ def get_leaderboard():
 @st.cache_data(ttl=3601)
 def get_2k27_predictions():
     try:
-        res   = requests.get(f"{API}/ask", params={"q": "Top 10 players by ovr_rating in nba-2k26 show player_name ovr_rating"}, timeout=15).json()
+        # Fetch a wider pool so the true 2K27 top 10 can surface
+        res   = requests.get(f"{API}/ask", params={"q": "Top 30 players by ovr_rating in nba-2k26 show player_name ovr_rating"}, timeout=15).json()
         names = [r.get("player_name") for r in res.get("data", []) if r.get("player_name")]
         rows  = []
         for name in names:
@@ -188,11 +194,13 @@ def get_2k27_predictions():
                     "2K26":           last,
                     "Predicted 2K27": pred,
                     "Δ":              round(pred - last, 1),
-                    "PTS":            round(float(p.get("current_stats", {}).get("pts") or 0), 1),
-                    "AGE":            round(float(p.get("current_stats", {}).get("age") or 0), 1),
-                })
-        return rows if rows else None
-    except Exception:
+                    "PTS": round(float(str(p.get("current_stats", {}).get("pts") or 0).strip()), 1),
+                    "AGE": int(float(p.get("current_stats", {}).get("age") or 0)),
+                     })
+        rows.sort(key=lambda r: r["Predicted 2K27"], reverse=True)
+        return rows[:10] if rows else None
+    except Exception as e:
+        st.write("Error:", e)  # debug
         return None
 
 @st.cache_data(ttl=3601)
@@ -222,8 +230,8 @@ def search_players(query):
 
 # ── Page header ───────────────────────────────────────────────────────────────
 
-st.title("🏀 NBA 2K Rating Predictor")
-st.caption("Predict 2K27 ratings using real NBA stats + Machine Learning · Model MAE: ±1.16 OVR · R² = 0.942")
+st.title("🏀🎮 NBA 2K27 Rating Predictor")
+st.caption("Predict 2K27 ratings using real NBA stats + Machine Learning · Model MAE: ±1.23 OVR · R² = 0.933")
 
 tab1, tab2, tab3 = st.tabs(["Player Lookup", "Leaderboard", "Ask Anything"])
 
@@ -234,22 +242,34 @@ tab1, tab2, tab3 = st.tabs(["Player Lookup", "Leaderboard", "Ask Anything"])
 
 with tab1:
 
+    featured_default = None
     if "featured_player" in st.session_state:
-        initial_value = st.session_state.pop("featured_player")
-    elif "selected_player" in st.session_state:
-        initial_value = st.session_state["selected_player"]
-    else:
-        initial_value = ""
+        featured_default = st.session_state.pop("featured_player")
+        st.session_state["searchbox_key"] = featured_default
 
-    # ── Search row ────────────────────────────────────────────────────────────
+    if "searchbox_key" not in st.session_state:
+        st.session_state["searchbox_key"] = "default"
+
     search_col, season_col = st.columns([4, 1])
+
+    def search_players_live(query: str):
+        if not query or len(query) < 2:
+            return []
+        try:
+            res = requests.get(f"{API}/search/{query}", timeout=5).json()
+            return res.get("results", [])
+        except Exception:
+            return []
+
     with search_col:
-        player_input = st.text_input(
-            "Search player",
-            value=initial_value,
+        selected = st_searchbox(
+            search_players_live,
             placeholder="🔍  Search any NBA player — e.g. LeBron James, Nikola Jokic...",
-            label_visibility="collapsed",
+            key=f"player_searchbox_{st.session_state['searchbox_key']}",
+            default_use_searchterm=False,
+            default=featured_default,
         )
+
     with season_col:
         season_display = st.selectbox(
             "Season",
@@ -260,28 +280,12 @@ with tab1:
         game_label = SEASON_TO_GAME[season_key]
         is_predict_season = season_key == "2025-26"
 
-    selected = None
-    if player_input and len(player_input) >= 2:
-        try:
-            search_res  = search_players(player_input)
-            suggestions = search_res.get("results", [])
-            if suggestions:
-                if len(suggestions) == 1:
-                    selected = suggestions[0]
-                    st.session_state["selected_player"] = selected
-                else:
-                    selected = st.selectbox(
-                        "Select player",
-                        suggestions,
-                        label_visibility="collapsed"
-                    )
-                    st.session_state["selected_player"] = selected
-            else:
-                st.warning("No players found — try a different name")
-        except Exception:
-            st.warning("Search unavailable — API issue")
-    elif "selected_player" in st.session_state:
-        # Keep last selected player when only season changes
+    # Track selected player across season changes
+    if selected:
+        st.session_state["selected_player"] = selected
+        st.session_state["selected_season"] = season_key
+    elif not selected and "selected_player" in st.session_state:
+        # Restore last player when only the season dropdown changes
         selected = st.session_state["selected_player"]
         st.divider()
 
@@ -464,10 +468,20 @@ with tab1:
 
             with st.expander("Full career history"):
                 display_cols = ["game_label", "season", "ovr_rating", "pts",
-                               "reb", "ast", "age", "gp", "ovr_delta", "split"]
+                            "reb", "ast", "age", "gp", "ovr_delta", "split"]
                 display_df = df[display_cols].copy()
+                
                 for col in ["ovr_rating", "pts", "reb", "ast", "age", "ovr_delta"]:
-                    display_df[col] = pd.to_numeric(display_df[col], errors="coerce").round(1)
+                    display_df[col] = pd.to_numeric(display_df[col], errors="coerce")
+                
+                # Format as strings so Streamlit can't add trailing zeros
+                display_df["ovr_rating"] = display_df["ovr_rating"].apply(lambda x: f"{int(x)}" if pd.notna(x) else "None")
+                display_df["pts"]        = display_df["pts"].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "None")
+                display_df["reb"]        = display_df["reb"].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "None")
+                display_df["ast"]        = display_df["ast"].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "None")
+                display_df["age"]        = display_df["age"].apply(lambda x: f"{int(x)}" if pd.notna(x) else "None")
+                display_df["ovr_delta"]  = display_df["ovr_delta"].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "None")
+
                 display_df = display_df.rename(columns={
                     "game_label": "Game", "season": "Season",
                     "ovr_rating": "OVR", "pts": "PTS", "reb": "REB",
@@ -477,9 +491,7 @@ with tab1:
                 st.dataframe(
                     display_df.style.map(color_delta_style, subset=["OVR Δ"]),
                     column_config={
-                        "OVR": num_col(), "PTS": num_col(), "REB": num_col(),
-                        "AST": num_col(), "AGE": num_col(), "GP": num_col("%d"),
-                        "OVR Δ": num_col(),
+                        "GP": st.column_config.NumberColumn(format="%d"),
                     },
                     hide_index=True, use_container_width=True
                 )
@@ -545,12 +557,21 @@ with tab2:
                 for c in ["2K26", "Predicted 2K27", "Δ", "PTS", "AGE"]:
                     if c in df_p.columns:
                         df_p[c] = pd.to_numeric(df_p[c], errors="coerce").round(1)
+
                 df_p.index = range(1, len(df_p) + 1)
+                df_p["PTS"] = df_p["PTS"].apply(lambda x: f"{float(x):.1f}")
+                df_p["AGE"] = df_p["AGE"].astype(int)
+                df_p["2K26"] = df_p["2K26"].astype(int)
+                df_p["Predicted 2K27"] = df_p["Predicted 2K27"].astype(int)
+
                 st.dataframe(
                     df_p.style.map(color_delta_style, subset=["Δ"]),
                     column_config={
-                        "2K26": num_col(), "Predicted 2K27": num_col(),
-                        "Δ": num_col(), "PTS": num_col(), "AGE": num_col(),
+                        "2K26":           st.column_config.NumberColumn(format="%d"),
+                        "Predicted 2K27": st.column_config.NumberColumn(format="%d"),
+                        "Δ":              st.column_config.NumberColumn(format="%.1f"),
+                        "PTS":            st.column_config.NumberColumn(format="%.1f"),
+                        "AGE":            st.column_config.NumberColumn(format="%d"),
                     },
                     use_container_width=True
                 )
@@ -615,6 +636,8 @@ with tab2:
                     "Predicted 2K27": "Ovr Rating",
                     "Δ": "Ovr Delta"
                 })
+
+                df_up_pred["Ovr Delta"] = df_up_pred["Ovr Delta"].apply(lambda x: f"{float(x):.1f}")
                 st.dataframe(
                     df_up_pred[["Player Name", "Ovr Rating", "Ovr Prev", "Ovr Delta"]].style.map(
                         color_delta_style, subset=["Ovr Delta"]
@@ -641,6 +664,7 @@ with tab2:
                     "Predicted 2K27": "Ovr Rating",
                     "Δ": "Ovr Delta"
                 })
+                df_dn_pred["Ovr Delta"] = df_dn_pred["Ovr Delta"].apply(lambda x: f"{float(x):.1f}")
                 st.dataframe(
                     df_dn_pred[["Player Name", "Ovr Rating", "Ovr Prev", "Ovr Delta"]].style.map(
                         color_delta_style, subset=["Ovr Delta"]
