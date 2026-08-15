@@ -312,7 +312,7 @@ with tab1:
                     '<div class="card" style="border-color:#40a0f030">'
                     '<div style="font-size:0.75rem;color:#40a0f0;margin-bottom:8px">2025-26 SEASON</div>'
                     '<p style="color:#aaa;font-size:0.9rem;margin:0">The 2025-26 season is the basis '
-                    'for 2K27 predictions. No 2K rating exists yet — see the predicted rating →</p>'
+                    'for 2K27 predictions. No 2K rating exists yet — see this player\'s predicted rating for this year or for previous seasons</p>'
                     '</div>',
                     unsafe_allow_html=True
                 )
