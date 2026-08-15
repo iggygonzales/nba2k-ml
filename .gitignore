@@ -12,3 +12,4 @@ venv/
 .venv/
 .streamlit/
 .streamlit/secrets.toml
+pipeline/db.py
