@@ -58,10 +58,10 @@ CREATE TABLE IF NOT EXISTS stats (
     fg3_pct         NUMERIC(5,3),
     ft_pct          NUMERIC(5,3),
     net_rating      NUMERIC(7,2),
-    usg_pct         NUMERIC(5,3),
-    ast_pct         NUMERIC(5,3),
+    usg_pct         FLOAT,
+    ast_pct         FLOAT,
     ast_to          NUMERIC(5,2),
-    per             NUMERIC(5,3),
+    per             FLOAT,
     fetched_at      TIMESTAMP DEFAULT NOW(),
     PRIMARY KEY (player_id, season_year)
 );

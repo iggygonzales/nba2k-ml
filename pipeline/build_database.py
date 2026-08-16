@@ -277,6 +277,8 @@ def write_to_postgres_bulk(merged, stats, engine):
         .drop_duplicates(["player_id", "season_year"], keep="first")
     )
     all_stats["net_rating"] = all_stats["net_rating"].clip(-999, 999)
+    all_stats["fg3_pct"] = all_stats["fg3_pct"].fillna(0.0)
+    all_stats["ft_pct"]  = all_stats["ft_pct"].fillna(0.0) 
     all_stats.to_sql("stats", engine, if_exists="append", index=False,
                      method="multi", chunksize=500)
     print(f"  Stats inserted:   {len(all_stats)}")
