@@ -428,21 +428,48 @@ with tab1:
             ))
 
             # Predicted 2K27 line
-            if "detail" not in pred_res and len(actual_df) > 0:
-                last_row     = actual_df.iloc[-1]
+            # For players with no actual 2K26 history, plot last_known_ovr as a point
+            if len(actual_df) == 0 and "detail" not in pred_res:
+                last_known = pred_res.get("last_known_ovr")
+                if last_known:
+                    fig.add_trace(go.Scatter(
+                        x=["2K26"],
+                        y=[last_known],
+                        mode="markers+text",
+                        name="Actual OVR",
+                        marker=dict(size=9, color="#f0c040"),
+                        text=[str(last_known)],
+                        textposition="top center",
+                        textfont=dict(color="#f0c040", size=11),
+                        hovertemplate="<b>%{x}</b><br>OVR: %{y}<extra></extra>"
+                    ))
+
+            # Predicted 2K27 line
+            if "detail" not in pred_res:
                 pred_ovr_val = pred_res.get("rounded_ovr")
-                fig.add_trace(go.Scatter(
-                    x=[last_row["game_label"], "2K27"],
-                    y=[last_row["ovr_rating"], pred_ovr_val],
-                    mode="lines+markers+text",
-                    name="Predicted 2K27",
-                    line=dict(color="#40a0f0", width=2, dash="dash"),
-                    marker=dict(size=12, color="#40a0f0", symbol="star"),
-                    text=["", str(pred_ovr_val)],
-                    textposition="top center",
-                    textfont=dict(color="#40a0f0", size=12),
-                    hovertemplate="<b>%{x}</b><br>Predicted OVR: %{y}<extra></extra>"
-                ))
+                last_known   = pred_res.get("last_known_ovr")
+                if len(actual_df) > 0:
+                    anchor_x = actual_df.iloc[-1]["game_label"]
+                    anchor_y = actual_df.iloc[-1]["ovr_rating"]
+                elif last_known:
+                    anchor_x = "2K26"
+                    anchor_y = last_known
+                else:
+                    anchor_x = None
+                    anchor_y = None
+                if anchor_x and pred_ovr_val:
+                    fig.add_trace(go.Scatter(
+                        x=[anchor_x, "2K27"],
+                        y=[anchor_y, pred_ovr_val],
+                        mode="lines+markers+text",
+                        name="Predicted 2K27",
+                        line=dict(color="#40a0f0", width=2, dash="dash"),
+                        marker=dict(size=12, color="#40a0f0", symbol="star"),
+                        text=["", str(pred_ovr_val)],
+                        textposition="top center",
+                        textfont=dict(color="#40a0f0", size=12),
+                        hovertemplate="<b>%{x}</b><br>Predicted OVR: %{y}<extra></extra>"
+                    ))
 
             fig.update_layout(
                 title=dict(
