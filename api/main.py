@@ -286,6 +286,8 @@ def get_2k27_movers_endpoint():
         df[col] = df[col].fillna(0.0)
     df["ovr_prev"] = df["ovr_prev"].fillna(df["last_2k26"])
     df[FEATURES] = df[FEATURES].fillna(0.0)
+    df["fg3_pct"] = df["fg3_pct"].fillna(0.0)
+    df["ft_pct"]  = df["ft_pct"].fillna(0.0)
 
     missing = [f for f in FEATURES if f not in df.columns]
     print(f"Missing features: {missing}")
