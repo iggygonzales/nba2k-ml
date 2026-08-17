@@ -273,10 +273,8 @@ def get_2k27_movers_endpoint():
         LEFT JOIN ratings r ON r.player_id = st.player_id AND r.season_year = 2025
         LEFT JOIN features f ON f.player_id = st.player_id AND f.season_year = 2026
         WHERE st.season_year = 2026
-        AND r.ovr_rating IS NOT NULL
         AND st.gp >= 20
         ORDER BY r.ovr_rating DESC
-        LIMIT 100
     """, engine)
 
     if df.empty:
