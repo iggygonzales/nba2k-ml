@@ -203,7 +203,7 @@ def get_2k27_predictions():
         st.write("Error:", e)  # debug
         return None
 
-@st.cache_data(ttl=3601)
+@st.cache_data(ttl=300)
 def get_2k27_movers():
     try:
         res = requests.get(f"{API}/leaderboard/2k27-movers", timeout=15).json()
