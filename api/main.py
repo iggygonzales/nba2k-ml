@@ -126,12 +126,16 @@ def fill_deltas(row):
         if pd.isna(row.get(col)):
             row[col] = 0.0
     if pd.isna(row.get("ovr_prev")):
-        row["ovr_prev"] = 75.0
+        row["ovr_prev"] = row.get("last_2k26", row.get("ovr_rating", 0.0))
+    for col in ["fg3_pct", "ft_pct", "net_rating", "ast_pct", "per", "usg_pct"]:
+        if pd.isna(row.get(col)):
+            row[col] = 0.0
     return row
 
 
 def run_prediction(row):
     input_df = pd.DataFrame([row])[FEATURES]
+    input_df = input_df.astype(float)
     pred = float(model.predict(input_df)[0])
     return max(67.0, min(99.0, pred))
 

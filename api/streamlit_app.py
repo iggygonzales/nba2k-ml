@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from streamlit_searchbox import st_searchbox
 
 API = st.secrets.get("API_URL", "http://localhost:8000")
-st.sidebar.write(f"API: {API}")
+# st.sidebar.write(f"API: {API}")
 # old API = "http://18.222.150.138:8000"
 # API = "http://localhost:8000"
 
