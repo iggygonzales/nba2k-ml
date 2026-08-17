@@ -260,7 +260,7 @@ def get_2k27_movers_endpoint():
     df = pd.read_sql("""
         SELECT 
             p.full_name as player_name,
-            r.ovr_rating as last_2k26,
+            COALESCE(r2025.ovr_rating, r2026.ovr_rating) as last_2k26,
             st.pts, st.reb, st.ast, st.age, st.gp,
             st.stl, st.blk, st.tov,
             st.fg_pct, st.fg3_pct, st.ft_pct,
@@ -270,11 +270,12 @@ def get_2k27_movers_endpoint():
         FROM stats st
         JOIN players p ON p.player_id = st.player_id
         JOIN seasons s ON s.season_year = st.season_year
-        LEFT JOIN ratings r ON r.player_id = st.player_id AND r.season_year = 2025
+        LEFT JOIN ratings r2025 ON r2025.player_id = st.player_id AND r2025.season_year = 2025
+        LEFT JOIN ratings r2026 ON r2026.player_id = st.player_id AND r2026.season_year = 2026
         LEFT JOIN features f ON f.player_id = st.player_id AND f.season_year = 2026
         WHERE st.season_year = 2026
         AND st.gp >= 20
-        ORDER BY r.ovr_rating DESC
+        AND COALESCE(r2025.ovr_rating, r2026.ovr_rating) IS NOT NULL
     """, engine)
 
     if df.empty:
@@ -283,7 +284,7 @@ def get_2k27_movers_endpoint():
     # Fill nulls
     for col in ["pts_delta", "reb_delta", "ast_delta"]:
         df[col] = df[col].fillna(0.0)
-    df["ovr_prev"] = df["ovr_prev"].fillna(75.0)
+    df["ovr_prev"] = df["ovr_prev"].fillna(df["last_2k26"])
     df[FEATURES] = df[FEATURES].fillna(0.0)
 
     missing = [f for f in FEATURES if f not in df.columns]
